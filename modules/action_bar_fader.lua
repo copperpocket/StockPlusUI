@@ -4,30 +4,24 @@ local SPU = _G["StockPlusUI"]
 local fader = { name = "action_bar_fader" }
 SPU:register_module(fader)
 
--- The Blizzard bar frames we fade. These are the parent frames; fading the
--- parent fades all its buttons in one SetAlpha call (cheap).
 local bars = {
-    "MainMenuBarArtFrame",   -- main bar art + buttons container
-    "BonusActionBarFrame",   -- stance/bonus bar overlay
-    "MultiBarBottomLeft",    -- bottom-left
-    "MultiBarBottomRight",   -- bottom-right
-    "MultiBarRight",         -- right bar 1
-    "MultiBarLeft",          -- right bar 2
+    "MainMenuBarArtFrame",
+    "BonusActionBarFrame",
+    "MultiBarBottomLeft",
+    "MultiBarBottomRight",
+    "MultiBarRight",
+    "MultiBarLeft",
 }
 
-local db                 -- module settings (set in on_init)
-local current_alpha      -- last applied alpha, avoids redundant fades
-local mouse_over = false -- tracked via hover hooks
+local db
+local mouse_over = false
 
 -- ---- state evaluation ------------------------------------------------------
 
 local function is_power_at_default()
-    -- Rage (1) and RunicPower (6) default to 0; "active" means > 0.
-    -- Mana/Energy/Focus default to max; "active" means current < max.
     local power_type = UnitPowerType("player")
     local cur        = UnitPower("player")
     local max        = UnitPowerMax("player")
-
     if power_type == 1 or power_type == 6 then   -- Rage / Runic Power
         return cur == 0
     else                                          -- Mana / Energy / Focus
@@ -35,86 +29,119 @@ local function is_power_at_default()
     end
 end
 
--- Returns true if bars should be fully shown.
 local function should_show()
-    if InCombatLockdown() then return true end                             -- 1. in combat
-    if UnitExists("target") then return true end                           -- 2. has target
-    if UnitHealth("player") < UnitHealthMax("player") then return true end  -- 3a. missing HP
-    if not is_power_at_default() then return true end                      -- 3b. non-default power
-    if mouse_over then return true end                                     -- 4. hovering a bar
+    if InCombatLockdown() then return true end
+    if UnitExists("target") then return true end
+    if UnitHealth("player") < UnitHealthMax("player") then return true end
+    if not is_power_at_default() then return true end
+    if mouse_over then return true end
     return false
+end
+
+-- ---- fade driver (taint-safe: only SetAlpha, never writes fields) ----------
+-- IMPORTANT: do NOT use UIFrameFade on these secure frames. It writes
+-- frame.fadeInfo onto them, which taints the bars and breaks keybinds.
+
+local fade_driver = CreateFrame("Frame")
+fade_driver:Hide()
+
+local fade_from, fade_to, fade_elapsed, fade_duration = 1, 1, 0, 0
+
+local function set_bars_alpha(a)
+    for i = 1, #bars do
+        local f = _G[bars[i]]
+        if f then f:SetAlpha(a) end   -- method call, non-protected, safe
+    end
+end
+
+fade_driver:SetScript("OnUpdate", function(self, elapsed)
+    fade_elapsed = fade_elapsed + elapsed
+    local t = (fade_duration > 0) and (fade_elapsed / fade_duration) or 1
+    if t >= 1 then
+        set_bars_alpha(fade_to)
+        self:Hide()
+    else
+        set_bars_alpha(fade_from + (fade_to - fade_from) * t)
+    end
+end)
+
+local function start_fade(target)
+    local first = _G[bars[1]]
+    fade_from     = first and first:GetAlpha() or target
+    fade_to       = target
+    fade_elapsed  = 0
+    fade_duration = db.fade_time or 0.25
+    if fade_duration <= 0 or fade_from == fade_to then
+        set_bars_alpha(target)
+        fade_driver:Hide()
+    else
+        fade_driver:Show()
+    end
 end
 
 -- ---- applying the fade -----------------------------------------------------
 
+local current_target
+
 local function apply_fade()
     if not db or not db.enabled then return end
-
     local target = should_show() and db.shown_alpha or db.faded_alpha
-    if current_alpha == target then return end  -- nothing to do
-    current_alpha = target
-
-    for i = 1, #bars do
-        local f = _G[bars[i]]
-        if f then
-            UIFrameFadeRemoveFrame(f)  -- cancel any in-flight fade first
-            local fade_info = {
-                mode         = target > f:GetAlpha() and "IN" or "OUT",
-                timeToFade   = db.fade_time,
-                startAlpha   = f:GetAlpha(),
-                endAlpha     = target,
-                finishedFunc = nil,
-            }
-            UIFrameFade(f, fade_info)
-        end
-    end
+    if current_target == target then return end
+    current_target = target
+    start_fade(target)
 end
 
-SPU.apply_fade = apply_fade  -- expose for refresh_fader
+SPU.apply_fade = apply_fade
 
--- Called by config when settings change.
 function SPU:refresh_fader()
     if db and db.enabled then
-        current_alpha = nil   -- force reapply
+        current_target = nil
         apply_fade()
     else
-        -- disabled: restore full opacity immediately
-        for i = 1, #bars do
-            local f = _G[bars[i]]
-            if f then UIFrameFadeRemoveFrame(f); f:SetAlpha(1.0) end
-        end
-        current_alpha = 1.0
+        fade_driver:Hide()
+        set_bars_alpha(1.0)
+        current_target = 1.0
     end
 end
 
--- ---- mouse hover tracking --------------------------------------------------
+-- ---- mouse hover tracking (taint-safe polling, no HookScript) --------------
 
-local function hook_hover()
-    -- Hook enter/leave on each bar so hovering forces show.
+local hover_poller    = CreateFrame("Frame")
+local POLL_INTERVAL   = 0.1
+local since_last_poll = 0
+
+local function is_mouse_over_bars()
     for i = 1, #bars do
         local f = _G[bars[i]]
-        if f then
-            f:HookScript("OnEnter", function() mouse_over = true;  apply_fade() end)
-            f:HookScript("OnLeave", function() mouse_over = false; apply_fade() end)
+        if f and f:IsVisible() and MouseIsOver(f) then
+            return true
         end
     end
+    return false
 end
+
+hover_poller:SetScript("OnUpdate", function(_, elapsed)
+    since_last_poll = since_last_poll + elapsed
+    if since_last_poll < POLL_INTERVAL then return end
+    since_last_poll = 0
+    local now_over = is_mouse_over_bars()
+    if now_over ~= mouse_over then
+        mouse_over = now_over
+        apply_fade()
+    end
+end)
 
 -- ---- init & events ---------------------------------------------------------
 
 function fader:on_init(settings)
     db = settings
-    hook_hover()
 
-    -- Register the events that change our state. All route to apply_fade.
-    SPU:register_event("PLAYER_REGEN_DISABLED",  apply_fade)  -- entering combat
-    SPU:register_event("PLAYER_REGEN_ENABLED",   apply_fade)  -- leaving combat
+    SPU:register_event("PLAYER_REGEN_DISABLED",  apply_fade)
+    SPU:register_event("PLAYER_REGEN_ENABLED",   apply_fade)
     SPU:register_event("PLAYER_TARGET_CHANGED",  apply_fade)
     SPU:register_event("PLAYER_ENTERING_WORLD",  apply_fade)
     SPU:register_event("ACTIONBAR_UPDATE_STATE", apply_fade)
 
-    -- Health / power: filter to the player unit to avoid needless work.
-    -- NOTE: WotLK 3.3.5a has no UNIT_POWER; use the per-power-type events.
     SPU:register_event("UNIT_HEALTH",       function(_, unit) if unit == "player" then apply_fade() end end)
     SPU:register_event("UNIT_MANA",         function(_, unit) if unit == "player" then apply_fade() end end)
     SPU:register_event("UNIT_RAGE",         function(_, unit) if unit == "player" then apply_fade() end end)
@@ -122,6 +149,5 @@ function fader:on_init(settings)
     SPU:register_event("UNIT_RUNIC_POWER",  function(_, unit) if unit == "player" then apply_fade() end end)
     SPU:register_event("UNIT_DISPLAYPOWER", function(_, unit) if unit == "player" then apply_fade() end end)
 
-    -- Initial state after everything loads.
     apply_fade()
 end
