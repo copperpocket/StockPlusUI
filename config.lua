@@ -9,6 +9,9 @@ local defaults = {
         shown_alpha = 1.0,
         fade_time   = 0.25,  -- seconds for the alpha transition
     },
+    gryphon_toggle = {
+        hidden = false,   -- default: gryphons SHOWN (faithful to stock UI)
+    },
 }
 
 -- Shallow-merge defaults into db without clobbering saved user values.
@@ -65,6 +68,18 @@ local function build_panel()
         SPU.db.action_bar_fader.faded_alpha = value
         _G[self:GetName() .. "Text"]:SetText(string.format("Faded opacity: %.2f", value))
         if SPU.refresh_fader then SPU:refresh_fader() end
+    end)
+
+    -- Hide gryphons checkbox.
+    local gryphons = CreateFrame("CheckButton", "StockPlusUIHideGryphons", panel, "InterfaceOptionsCheckButtonTemplate")
+    gryphons:SetPoint("TOPLEFT", slider, "BOTTOMLEFT", -4, -24)
+    _G[gryphons:GetName() .. "Text"]:SetText("Hide action bar gryphons")
+    gryphons:SetScript("OnShow", function(self)
+        self:SetChecked(SPU.db.gryphon_toggle.hidden)
+    end)
+    gryphons:SetScript("OnClick", function(self)
+        SPU.db.gryphon_toggle.hidden = self:GetChecked() and true or false
+        if SPU.refresh_gryphons then SPU:refresh_gryphons() end
     end)
 
     InterfaceOptions_AddCategory(panel)
