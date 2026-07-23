@@ -5,13 +5,16 @@ local fader = { name = "action_bar_fader" }
 SPU:register_module(fader)
 
 local bars = {
-    "MainMenuBarArtFrame",
-    "BonusActionBarFrame",
-    "MultiBarBottomLeft",
-    "MultiBarBottomRight",
-    "MultiBarRight",
-    "MultiBarLeft",
+    "MainMenuBarArtFrame",   -- main bar art + buttons container
+    "BonusActionBarFrame",   -- stance/bonus bar overlay
+    "MultiBarBottomLeft",    -- bottom-left
+    "MultiBarBottomRight",   -- bottom-right
+    "MultiBarRight",         -- right bar 1
+    "MultiBarLeft",          -- right bar 2
+    "MainMenuExpBar",        -- experience bar
+    "ReputationWatchBar",    -- reputation watch bar
 }
+
 
 local db
 local mouse_over = false
