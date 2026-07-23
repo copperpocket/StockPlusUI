@@ -4,6 +4,27 @@ local SPU = _G["StockPlusUI"]
 local module = { name = "player_frame_fader" }
 SPU:register_module(module)
 
+SPU:register_config("Player Frame", function(panel)
+    local pff = function() return SPU.db.player_frame_fader end
+
+    local header = SPU:make_header(panel, "Player Frame", nil)
+    local sub    = SPU:make_subtitle(panel, "Fade the player unit frame based on player state.", header)
+
+    local toggle = SPU:make_checkbox(panel, "StockPlusUIPlayerFade", "Fade player frame", sub, -16,
+        function() return pff().enabled end,
+        function(v)
+            pff().enabled = v
+            if SPU.refresh_player_frame then SPU:refresh_player_frame() end
+        end)
+
+    SPU:make_alpha_slider(panel, "StockPlusUIPlayerAlpha", "Faded opacity", toggle, -24,
+        function() return pff().faded_alpha end,
+        function(v)
+            pff().faded_alpha = v
+            if SPU.refresh_player_frame then SPU:refresh_player_frame() end
+        end)
+end)
+
 local db
 local mouse_over = false
 local fader

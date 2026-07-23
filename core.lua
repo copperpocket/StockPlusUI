@@ -34,6 +34,16 @@ function SPU:register_module(module)
     table.insert(self.modules, module)
 end
 
+-- Config page registry. Modules call SPU:register_config("Label", build_fn).
+-- Each becomes a child page under the parent "StockPlusUI" category. build_fn
+-- receives the child panel frame and populates it. Pages are built after the
+-- parent panel exists (see config.lua), so we queue them until then.
+SPU.config_pages = {}   -- { { name = ..., build = ... }, ... }
+
+function SPU:register_config(name, build_fn)
+    table.insert(self.config_pages, { name = name, build = build_fn })
+end
+
 -- Bootstrap once saved variables are available.
 SPU:register_event("ADDON_LOADED", function(_, loaded_name)
     if loaded_name ~= addon_name then return end

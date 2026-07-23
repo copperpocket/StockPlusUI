@@ -1,35 +1,72 @@
--- modules/action_bar_fader.lua : auto-fade action bars by player state
+-- modules/action_bar_fader.lua : auto-fade each action bar independently by state
 local SPU = _G["StockPlusUI"]
 
 local fader = { name = "action_bar_fader" }
 SPU:register_module(fader)
 
-local bars = {
-    "MainMenuBarArtFrame",   -- main bar art + buttons container
-    "BonusActionBarFrame",   -- stance/bonus bar overlay
-    "MultiBarBottomLeft",    -- bottom-left
-    "MultiBarBottomRight",   -- bottom-right
-    "MultiBarRight",         -- right bar 1
-    "MultiBarLeft",          -- right bar 2
-    "MainMenuExpBar",        -- experience bar
-    "ReputationWatchBar",    -- reputation watch bar
-}
+-- Register this module's config page under the parent category.
+SPU:register_config("Action Bars", function(panel)
+    local abf = function() return SPU.db.action_bar_fader end
 
+    local header = SPU:make_header(panel, "Action Bars", nil)
+    local sub    = SPU:make_subtitle(panel, "Fade each bar independently based on player state.", header)
+
+    local bar_rows = {
+        { key = "main",         label = "Fade main bar" },
+        { key = "bottom_left",  label = "Fade bottom-left bar" },
+        { key = "bottom_right", label = "Fade bottom-right bar" },
+        { key = "right_1",      label = "Fade right bar 1" },
+        { key = "right_2",      label = "Fade right bar 2" },
+    }
+
+    local anchor = sub
+    for i, row in ipairs(bar_rows) do
+        anchor = SPU:make_checkbox(panel, "StockPlusUIBar_" .. row.key, row.label, anchor,
+            i == 1 and -16 or -6,
+            function() return abf().bars[row.key].enabled end,
+            function(v)
+                abf().bars[row.key].enabled = v
+                if SPU.refresh_fader then SPU:refresh_fader() end
+            end)
+    end
+
+    local slider = SPU:make_alpha_slider(panel, "StockPlusUIBarsAlpha", "Faded opacity", anchor, -24,
+        function() return abf().faded_alpha end,
+        function(v)
+            abf().faded_alpha = v
+            if SPU.refresh_fader then SPU:refresh_fader() end
+        end)
+
+    SPU:make_checkbox(panel, "StockPlusUIHideGryphons", "Hide action bar gryphons", slider, -24,
+        function() return SPU.db.gryphon_toggle.hidden end,
+        function(v)
+            SPU.db.gryphon_toggle.hidden = v
+            if SPU.refresh_gryphons then SPU:refresh_gryphons() end
+        end)
+end)
+
+-- Per-bar definitions. Each key gets its own enabled setting, config checkbox,
+-- and fade driver, so any bar can fade while others stay put.
+local bar_defs = {
+    { key = "main",         label = "Fade main bar",         frames = { "MainMenuBarArtFrame", "BonusActionBarFrame", "MainMenuExpBar", "ReputationWatchBar" } },
+    { key = "bottom_left",  label = "Fade bottom-left bar",  frames = { "MultiBarBottomLeft" } },
+    { key = "bottom_right", label = "Fade bottom-right bar", frames = { "MultiBarBottomRight" } },
+    { key = "right_1",      label = "Fade right bar 1",      frames = { "MultiBarRight" } },
+    { key = "right_2",      label = "Fade right bar 2",      frames = { "MultiBarLeft" } },
+}
 
 local db
 local mouse_over = false
+local drivers   = {}   -- key -> fade controller
+local current   = {}   -- key -> last applied alpha (avoid redundant fades)
 
--- ---- state evaluation ------------------------------------------------------
+-- ---- state evaluation (shared across all bars) -----------------------------
 
 local function is_power_at_default()
-    local power_type = UnitPowerType("player")
-    local cur        = UnitPower("player")
-    local max        = UnitPowerMax("player")
-    if power_type == 1 or power_type == 6 then   -- Rage / Runic Power
-        return cur == 0
-    else                                          -- Mana / Energy / Focus
-        return cur >= max
-    end
+    local pt  = UnitPowerType("player")
+    local cur = UnitPower("player")
+    if pt == 1 or pt == 6 then return cur == 0            -- Rage / Runic Power
+    else return cur >= UnitPowerMax("player") end          -- Mana / Energy / Focus
 end
 
 local function should_show()
@@ -41,103 +78,97 @@ local function should_show()
     return false
 end
 
--- ---- fade driver (taint-safe: only SetAlpha, never writes fields) ----------
--- IMPORTANT: do NOT use UIFrameFade on these secure frames. It writes
--- frame.fadeInfo onto them, which taints the bars and breaks keybinds.
+-- ---- resolve a bar's frame globals to actual frame objects -----------------
 
-local fade_driver = CreateFrame("Frame")
-fade_driver:Hide()
-
-local fade_from, fade_to, fade_elapsed, fade_duration = 1, 1, 0, 0
-
-local function set_bars_alpha(a)
-    for i = 1, #bars do
-        local f = _G[bars[i]]
-        if f then f:SetAlpha(a) end   -- method call, non-protected, safe
+local function make_get_frames(def)
+    return function()
+        local out = {}
+        for i = 1, #def.frames do
+            local f = _G[def.frames[i]]
+            if f then out[#out + 1] = f end
+        end
+        return out
     end
 end
 
-fade_driver:SetScript("OnUpdate", function(self, elapsed)
-    fade_elapsed = fade_elapsed + elapsed
-    local t = (fade_duration > 0) and (fade_elapsed / fade_duration) or 1
-    if t >= 1 then
-        set_bars_alpha(fade_to)
-        self:Hide()
-    else
-        set_bars_alpha(fade_from + (fade_to - fade_from) * t)
-    end
-end)
+-- ---- applying the fade ------------------------------------------------------
 
-local function start_fade(target)
-    local first = _G[bars[1]]
-    fade_from     = first and first:GetAlpha() or target
-    fade_to       = target
-    fade_elapsed  = 0
-    fade_duration = db.fade_time or 0.25
-    if fade_duration <= 0 or fade_from == fade_to then
-        set_bars_alpha(target)
-        fade_driver:Hide()
-    else
-        fade_driver:Show()
+local function apply_bar(def)
+    local settings = db.bars[def.key]
+    local ctrl = drivers[def.key]
+    if not ctrl then return end
+
+    if not settings.enabled then
+        -- bar opted out: keep it fully visible
+        if current[def.key] ~= 1.0 then
+            ctrl:set(1.0)
+            current[def.key] = 1.0
+        end
+        return
     end
+
+    local target = should_show() and db.shown_alpha or db.faded_alpha
+    if current[def.key] == target then return end
+    current[def.key] = target
+    ctrl:fade_to(target)
 end
-
--- ---- applying the fade -----------------------------------------------------
-
-local current_target
 
 local function apply_fade()
-    if not db or not db.enabled then return end
-    local target = should_show() and db.shown_alpha or db.faded_alpha
-    if current_target == target then return end
-    current_target = target
-    start_fade(target)
+    if not db then return end
+    for i = 1, #bar_defs do
+        apply_bar(bar_defs[i])
+    end
 end
 
 SPU.apply_fade = apply_fade
 
+-- Called by config when a bar toggle changes. Reset that bar's cached alpha so
+-- it re-evaluates on the next apply.
 function SPU:refresh_fader()
-    if db and db.enabled then
-        current_target = nil
-        apply_fade()
-    else
-        fade_driver:Hide()
-        set_bars_alpha(1.0)
-        current_target = 1.0
+    for i = 1, #bar_defs do
+        current[bar_defs[i].key] = nil
     end
+    apply_fade()
 end
 
--- ---- mouse hover tracking (taint-safe polling, no HookScript) --------------
-
-local hover_poller    = CreateFrame("Frame")
-local POLL_INTERVAL   = 0.1
-local since_last_poll = 0
+-- ---- taint-safe hover polling (any enabled bar) ----------------------------
 
 local function is_mouse_over_bars()
-    for i = 1, #bars do
-        local f = _G[bars[i]]
-        if f and f:IsVisible() and MouseIsOver(f) then
-            return true
+    for i = 1, #bar_defs do
+        if db.bars[bar_defs[i].key].enabled then
+            local frames = drivers[bar_defs[i].key] and make_get_frames(bar_defs[i])()
+            if frames then
+                for j = 1, #frames do
+                    local f = frames[j]
+                    if f:IsVisible() and MouseIsOver(f) then return true end
+                end
+            end
         end
     end
     return false
 end
 
-hover_poller:SetScript("OnUpdate", function(_, elapsed)
-    since_last_poll = since_last_poll + elapsed
-    if since_last_poll < POLL_INTERVAL then return end
-    since_last_poll = 0
-    local now_over = is_mouse_over_bars()
-    if now_over ~= mouse_over then
-        mouse_over = now_over
+local poller, acc = CreateFrame("Frame"), 0
+poller:SetScript("OnUpdate", function(_, dt)
+    acc = acc + dt
+    if acc < 0.1 then return end
+    acc = 0
+    local over = is_mouse_over_bars()
+    if over ~= mouse_over then
+        mouse_over = over
         apply_fade()
     end
 end)
 
--- ---- init & events ---------------------------------------------------------
+-- ---- init & events ----------------------------------------------------------
 
 function fader:on_init(settings)
     db = settings
+
+    -- one independent fade driver per bar
+    for i = 1, #bar_defs do
+        drivers[bar_defs[i].key] = SPU:create_fader(make_get_frames(bar_defs[i]), db.fade_time)
+    end
 
     SPU:register_event("PLAYER_REGEN_DISABLED",  apply_fade)
     SPU:register_event("PLAYER_REGEN_ENABLED",   apply_fade)
@@ -145,12 +176,12 @@ function fader:on_init(settings)
     SPU:register_event("PLAYER_ENTERING_WORLD",  apply_fade)
     SPU:register_event("ACTIONBAR_UPDATE_STATE", apply_fade)
 
-    SPU:register_event("UNIT_HEALTH",       function(_, unit) if unit == "player" then apply_fade() end end)
-    SPU:register_event("UNIT_MANA",         function(_, unit) if unit == "player" then apply_fade() end end)
-    SPU:register_event("UNIT_RAGE",         function(_, unit) if unit == "player" then apply_fade() end end)
-    SPU:register_event("UNIT_ENERGY",       function(_, unit) if unit == "player" then apply_fade() end end)
-    SPU:register_event("UNIT_RUNIC_POWER",  function(_, unit) if unit == "player" then apply_fade() end end)
-    SPU:register_event("UNIT_DISPLAYPOWER", function(_, unit) if unit == "player" then apply_fade() end end)
+    SPU:register_event("UNIT_HEALTH",       function(_, u) if u == "player" then apply_fade() end end)
+    SPU:register_event("UNIT_MANA",         function(_, u) if u == "player" then apply_fade() end end)
+    SPU:register_event("UNIT_RAGE",         function(_, u) if u == "player" then apply_fade() end end)
+    SPU:register_event("UNIT_ENERGY",       function(_, u) if u == "player" then apply_fade() end end)
+    SPU:register_event("UNIT_RUNIC_POWER",  function(_, u) if u == "player" then apply_fade() end end)
+    SPU:register_event("UNIT_DISPLAYPOWER", function(_, u) if u == "player" then apply_fade() end end)
 
     apply_fade()
 end

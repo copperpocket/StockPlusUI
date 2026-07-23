@@ -1,13 +1,20 @@
--- config.lua : default settings + Interface Options panel
+-- config.lua : parent options panel, shared widget builders, child-page plumbing
 local SPU = _G["StockPlusUI"]
 
--- Central defaults. Modules read their own sub-table.
+-- ---- defaults --------------------------------------------------------------
+
 local defaults = {
     action_bar_fader = {
-        enabled     = true,
         faded_alpha = 0.2,   -- opacity when hidden (set 0.0 for fully invisible)
         shown_alpha = 1.0,
         fade_time   = 0.25,  -- seconds for the alpha transition
+        bars = {
+            main         = { enabled = true },
+            bottom_left  = { enabled = true },
+            bottom_right = { enabled = true },
+            right_1      = { enabled = true },
+            right_2      = { enabled = true },
+        },
     },
     gryphon_toggle = {
         hidden = false,   -- default: gryphons SHOWN (faithful to stock UI)
@@ -20,88 +27,118 @@ local defaults = {
     },
 }
 
--- Shallow-merge defaults into db without clobbering saved user values.
-function SPU:apply_defaults(db)
-    for section, opts in pairs(defaults) do
-        db[section] = db[section] or {}
-        for k, v in pairs(opts) do
-            if db[section][k] == nil then
-                db[section][k] = v
-            end
+-- Recursively merge defaults into db, descending into nested tables.
+local function deep_merge(dst, src)
+    for k, v in pairs(src) do
+        if type(v) == "table" then
+            dst[k] = dst[k] or {}
+            deep_merge(dst[k], v)
+        elseif dst[k] == nil then
+            dst[k] = v
         end
     end
 end
 
--- Build the options panel shown under ESC > Interface > AddOns > StockPlusUI.
-local function build_panel()
-    local panel = CreateFrame("Frame", "StockPlusUIOptionsPanel", InterfaceOptionsFramePanelContainer)
-    panel.name = "StockPlusUI"
-
-    local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", 16, -16)
-    title:SetText("StockPlusUI")
-
-    local subtitle = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
-    subtitle:SetText("A faithful overhaul of the default UI")
-
-    -- Enable checkbox for the fader module.
-    local enable = CreateFrame("CheckButton", "StockPlusUIEnableFader", panel, "InterfaceOptionsCheckButtonTemplate")
-    enable:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -16)
-    _G[enable:GetName() .. "Text"]:SetText("Enable action bar fading")
-    enable:SetScript("OnShow", function(self)
-        self:SetChecked(SPU.db.action_bar_fader.enabled)
-    end)
-    enable:SetScript("OnClick", function(self)
-        SPU.db.action_bar_fader.enabled = self:GetChecked() and true or false
-        if SPU.refresh_fader then SPU:refresh_fader() end
-    end)
-
-    -- Faded-alpha slider (0.0 - 1.0).
-    local slider = CreateFrame("Slider", "StockPlusUIFadedAlpha", panel, "OptionsSliderTemplate")
-    slider:SetPoint("TOPLEFT", enable, "BOTTOMLEFT", 4, -32)
-    slider:SetMinMaxValues(0, 1)
-    slider:SetValueStep(0.05)
-    slider:SetWidth(240)
-    _G[slider:GetName() .. "Low"]:SetText("0.0")
-    _G[slider:GetName() .. "High"]:SetText("1.0")
-    _G[slider:GetName() .. "Text"]:SetText("Faded opacity")
-    slider:SetScript("OnShow", function(self)
-        self:SetValue(SPU.db.action_bar_fader.faded_alpha)
-    end)
-    slider:SetScript("OnValueChanged", function(self, value)
-        value = math.floor(value * 20 + 0.5) / 20  -- snap to step
-        SPU.db.action_bar_fader.faded_alpha = value
-        _G[self:GetName() .. "Text"]:SetText(string.format("Faded opacity: %.2f", value))
-        if SPU.refresh_fader then SPU:refresh_fader() end
-    end)
-
-    -- Hide gryphons checkbox.
-    local gryphons = CreateFrame("CheckButton", "StockPlusUIHideGryphons", panel, "InterfaceOptionsCheckButtonTemplate")
-    gryphons:SetPoint("TOPLEFT", slider, "BOTTOMLEFT", -4, -24)
-    _G[gryphons:GetName() .. "Text"]:SetText("Hide action bar gryphons")
-    gryphons:SetScript("OnShow", function(self)
-        self:SetChecked(SPU.db.gryphon_toggle.hidden)
-    end)
-    gryphons:SetScript("OnClick", function(self)
-        SPU.db.gryphon_toggle.hidden = self:GetChecked() and true or false
-        if SPU.refresh_gryphons then SPU:refresh_gryphons() end
-    end)
-
-    -- Player frame fading toggle.
-    local player_fade = CreateFrame("CheckButton", "StockPlusUIPlayerFade", panel, "InterfaceOptionsCheckButtonTemplate")
-    player_fade:SetPoint("TOPLEFT", gryphons, "BOTTOMLEFT", 0, -8)
-    _G[player_fade:GetName() .. "Text"]:SetText("Fade player frame")
-    player_fade:SetScript("OnShow", function(self)
-        self:SetChecked(SPU.db.player_frame_fader.enabled)
-    end)
-    player_fade:SetScript("OnClick", function(self)
-        SPU.db.player_frame_fader.enabled = self:GetChecked() and true or false
-        if SPU.refresh_player_frame then SPU:refresh_player_frame() end
-    end)
-
-    InterfaceOptions_AddCategory(panel)
-    SPU.options_panel = panel
+function SPU:apply_defaults(db)
+    deep_merge(db, defaults)
 end
 
-build_panel()
+-- ---- shared widget builders (exposed on SPU so modules can use them) --------
+
+-- Section header inside a page.
+function SPU:make_header(panel, text, anchor, gap)
+    local h = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    if anchor then
+        h:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, gap or -20)
+    else
+        h:SetPoint("TOPLEFT", 16, -16)
+    end
+    h:SetText(text)
+    h:SetTextColor(0.2, 1.0, 0.6)
+    return h
+end
+
+-- Small descriptive subtitle line.
+function SPU:make_subtitle(panel, text, anchor, gap)
+    local s = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    s:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, gap or -8)
+    s:SetText(text)
+    return s
+end
+
+-- Checkbox bound to get()/set(bool).
+function SPU:make_checkbox(panel, name, label, anchor, gap, get, set)
+    local cb = CreateFrame("CheckButton", name, panel, "InterfaceOptionsCheckButtonTemplate")
+    cb:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, gap or -6)
+    _G[cb:GetName() .. "Text"]:SetText(label)
+    cb:SetScript("OnShow",  function(self) self:SetChecked(get()) end)
+    cb:SetScript("OnClick", function(self) set(self:GetChecked() and true or false) end)
+    return cb
+end
+
+-- 0.0-1.0 opacity slider bound to get()/set(value).
+function SPU:make_alpha_slider(panel, name, label, anchor, gap, get, set)
+    local s = CreateFrame("Slider", name, panel, "OptionsSliderTemplate")
+    s:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 4, gap or -24)
+    s:SetMinMaxValues(0, 1)
+    s:SetValueStep(0.05)
+    s:SetWidth(240)
+    _G[s:GetName() .. "Low"]:SetText("0.0")
+    _G[s:GetName() .. "High"]:SetText("1.0")
+    s:SetScript("OnShow", function(self)
+        self:SetValue(get())
+        _G[self:GetName() .. "Text"]:SetText(string.format("%s: %.2f", label, get()))
+    end)
+    s:SetScript("OnValueChanged", function(self, value)
+        value = math.floor(value * 20 + 0.5) / 20
+        set(value)
+        _G[self:GetName() .. "Text"]:SetText(string.format("%s: %.2f", label, value))
+    end)
+    return s
+end
+
+-- ---- parent + child page plumbing ------------------------------------------
+
+local parent_panel
+
+-- Build a child page under the parent category and hand it to build_fn.
+local function build_child(page)
+    local child = CreateFrame("Frame", "StockPlusUIConfig_" .. page.name:gsub("%s", ""), InterfaceOptionsFramePanelContainer)
+    child.name   = page.name
+    child.parent = parent_panel.name   -- nests under "StockPlusUI" in the tree
+    page.build(child)
+    InterfaceOptions_AddCategory(child)
+end
+
+-- register_config: if the parent already exists, build immediately; otherwise
+-- it stays queued in SPU.config_pages and gets built when the parent is created.
+function SPU:register_config(name, build_fn)
+    local page = { name = name, build = build_fn }
+    table.insert(self.config_pages, page)
+    if parent_panel then
+        build_child(page)
+    end
+end
+
+local function build_parent()
+    parent_panel = CreateFrame("Frame", "StockPlusUIOptionsPanel", InterfaceOptionsFramePanelContainer)
+    parent_panel.name = "StockPlusUI"
+
+    SPU:make_header(parent_panel, "StockPlusUI", nil)
+    local sub = SPU:make_subtitle(parent_panel,
+        "A faithful overhaul of the default UI. Select a section on the left.",
+        parent_panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge"))
+    -- (the throwaway fontstring above just gives make_subtitle an anchor; simpler:)
+    sub:ClearAllPoints()
+    sub:SetPoint("TOPLEFT", 16, -44)
+
+    InterfaceOptions_AddCategory(parent_panel)
+    SPU.options_panel = parent_panel
+
+    -- Build any pages modules queued before us.
+    for i = 1, #SPU.config_pages do
+        build_child(SPU.config_pages[i])
+    end
+end
+
+build_parent()
