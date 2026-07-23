@@ -1,0 +1,29 @@
+# ---- OS ----
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+Desktop.ini
+
+# ---- Editors / IDEs ----
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
+
+# ---- Lua tooling ----
+luac.out
+*.luac
+.luacheckcache
+
+# ---- WoW generated / packaging ----
+# SavedVariables (user config) if this repo sits inside a WoW AddOns folder
+*.lua.bak
+WTF/
+Backup/
+*.zip
+
+# ---- Misc ----
+*.log

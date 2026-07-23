@@ -1,0 +1,11 @@
+## Interface: 30300
+## Title: StockPlusUI
+## Notes: A faithful overhaul of the default UI. Nearly every element refined.
+## Author: Copperpocket
+## Version: 0.1.0
+## SavedVariables: StockPlusUIDB
+
+core.lua
+config.lua
+modules\action_bar_fader.lua
+modules\game_menu_button.lua
