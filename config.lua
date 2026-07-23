@@ -12,6 +12,12 @@ local defaults = {
     gryphon_toggle = {
         hidden = false,   -- default: gryphons SHOWN (faithful to stock UI)
     },
+    player_frame_fader = {
+        enabled     = true,
+        faded_alpha = 0.2,
+        shown_alpha = 1.0,
+        fade_time   = 0.25,
+    },
 }
 
 -- Shallow-merge defaults into db without clobbering saved user values.
@@ -80,6 +86,18 @@ local function build_panel()
     gryphons:SetScript("OnClick", function(self)
         SPU.db.gryphon_toggle.hidden = self:GetChecked() and true or false
         if SPU.refresh_gryphons then SPU:refresh_gryphons() end
+    end)
+
+    -- Player frame fading toggle.
+    local player_fade = CreateFrame("CheckButton", "StockPlusUIPlayerFade", panel, "InterfaceOptionsCheckButtonTemplate")
+    player_fade:SetPoint("TOPLEFT", gryphons, "BOTTOMLEFT", 0, -8)
+    _G[player_fade:GetName() .. "Text"]:SetText("Fade player frame")
+    player_fade:SetScript("OnShow", function(self)
+        self:SetChecked(SPU.db.player_frame_fader.enabled)
+    end)
+    player_fade:SetScript("OnClick", function(self)
+        SPU.db.player_frame_fader.enabled = self:GetChecked() and true or false
+        if SPU.refresh_player_frame then SPU:refresh_player_frame() end
     end)
 
     InterfaceOptions_AddCategory(panel)

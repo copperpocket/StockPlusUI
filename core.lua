@@ -49,6 +49,42 @@ SPU:register_event("ADDON_LOADED", function(_, loaded_name)
     end
 end)
 
+-- Reusable taint-safe alpha fader. Returns a controller with :fade_to(alpha)
+-- and :set(alpha). Uses SetAlpha only (never writes fields onto secure frames).
+function SPU:create_fader(get_frames, fade_time)
+    local driver = CreateFrame("Frame")
+    driver:Hide()
+    local from, to, elapsed, duration = 1, 1, 0, 0
+
+    local function set(a)
+        local frames = get_frames()
+        for i = 1, #frames do
+            local f = frames[i]
+            if f then f:SetAlpha(a) end
+        end
+    end
+
+    driver:SetScript("OnUpdate", function(self, dt)
+        elapsed = elapsed + dt
+        local t = (duration > 0) and (elapsed / duration) or 1
+        if t >= 1 then set(to); self:Hide()
+        else set(from + (to - from) * t) end
+    end)
+
+    local ctrl = {}
+    function ctrl:set(a) set(a); driver:Hide() end
+    function ctrl:fade_to(target)
+        local frames = get_frames()
+        from     = (frames[1] and frames[1]:GetAlpha()) or target
+        to       = target
+        elapsed  = 0
+        duration = fade_time or 0.25
+        if duration <= 0 or from == to then set(target); driver:Hide()
+        else driver:Show() end
+    end
+    return ctrl
+end
+
 -- Slash command: /spu or /stockplus opens the options panel.
 SLASH_STOCKPLUSUI1 = "/stockplus"
 SLASH_STOCKPLUSUI2 = "/stockplusui"
