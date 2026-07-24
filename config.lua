@@ -37,6 +37,12 @@ local defaults = {
         fade_time         = 0.25,
         editbox_on_top = false,
     },
+        minimap_fader = {
+        enabled     = true,
+        shown_alpha = 1.0,
+        fade_time   = 0.25,
+    },
+
 }
 
 -- Recursively merge defaults into db, descending into nested tables.
