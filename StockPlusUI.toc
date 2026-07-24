@@ -11,3 +11,4 @@ modules\action_bar_fader.lua
 modules\game_menu_button.lua
 modules\gryphon_toggle.lua
 modules\player_frame_fader.lua
+modules\chat_enhance.lua

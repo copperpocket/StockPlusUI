@@ -25,6 +25,18 @@ local defaults = {
         shown_alpha = 1.0,
         fade_time   = 0.25,
     },
+    chat_enhance = {
+        bg_alpha          = 0.30,
+        buttons_alpha     = 1.00,
+        hide_buttons      = false,
+        faster_text_fade  = false,   -- OFF = native text fade timing
+        text_visible_time = 10,
+        fade_tabs         = false,   -- OFF = native chat fade behavior
+        tabs_faded_alpha  = 0.20,
+        tabs_shown_alpha  = 1.00,
+        fade_time         = 0.25,
+        editbox_on_top = false,
+    },
 }
 
 -- Recursively merge defaults into db, descending into nested tables.
@@ -96,6 +108,28 @@ function SPU:make_alpha_slider(panel, name, label, anchor, gap, get, set)
     end)
     return s
 end
+
+-- Generic numeric slider bound to get()/set(value), with custom range + label fmt.
+function SPU:make_slider(panel, name, label, anchor, gap, min, max, step, fmt, get, set)
+    local s = CreateFrame("Slider", name, panel, "OptionsSliderTemplate")
+    s:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 4, gap or -24)
+    s:SetMinMaxValues(min, max)
+    s:SetValueStep(step)
+    s:SetWidth(240)
+    _G[s:GetName() .. "Low"]:SetText(tostring(min))
+    _G[s:GetName() .. "High"]:SetText(tostring(max))
+    s:SetScript("OnShow", function(self)
+        self:SetValue(get())
+        _G[self:GetName() .. "Text"]:SetText(string.format(fmt, get()))
+    end)
+    s:SetScript("OnValueChanged", function(self, value)
+        value = math.floor(value / step + 0.5) * step
+        set(value)
+        _G[self:GetName() .. "Text"]:SetText(string.format(fmt, value))
+    end)
+    return s
+end
+
 
 -- ---- parent + child page plumbing ------------------------------------------
 
