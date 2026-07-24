@@ -13,20 +13,8 @@ local db
 local mouse_over = false
 local current
 
-local function is_power_at_default()
-    local pt  = UnitPowerType("player")
-    local cur = UnitPower("player")
-    if pt == 1 or pt == 6 then return cur == 0
-    else return cur >= UnitPowerMax("player") end
-end
-
 local function should_show()
-    if InCombatLockdown() then return true end
-    if UnitExists("target") then return true end
-    if UnitHealth("player") < UnitHealthMax("player") then return true end
-    if not is_power_at_default() then return true end
-    if mouse_over then return true end
-    return false
+    return SPU:should_ui_show() or mouse_over
 end
 
 -- ---- fade driver with completion (hides Minimap surface when fully out) -----

@@ -108,13 +108,6 @@ end
 
 -- ---- state evaluation ------------------------------------------------------
 
-local function is_power_at_default()
-    local pt  = UnitPowerType("player")
-    local cur = UnitPower("player")
-    if pt == 1 or pt == 6 then return cur == 0
-    else return cur >= UnitPowerMax("player") end
-end
-
 local mouse_over_chat
 
 local function mouse_over_cluster()
@@ -131,10 +124,7 @@ end
 -- General "cluster should be visible" state. Note: editbox focus is handled
 -- separately below, but typing should still reveal the whole cluster.
 local function should_show()
-    if InCombatLockdown() then return true end
-    if UnitExists("target") then return true end
-    if UnitHealth("player") < UnitHealthMax("player") then return true end
-    if not is_power_at_default() then return true end
+    if SPU:should_ui_show() then return true end
     if mouse_over_chat then return true end
     local eb = _G["ChatFrame1EditBox"]
     if eb and eb:HasFocus() then return true end

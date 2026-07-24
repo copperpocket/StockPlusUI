@@ -1,4 +1,3 @@
-print("|cff33ff99SPU|r gryphon_toggle.lua loaded")
 -- modules/gryphon_toggle.lua : show or hide the action bar end-cap gryphons
 local SPU = _G["StockPlusUI"]
 

@@ -95,6 +95,30 @@ function SPU:create_fader(get_frames, fade_time)
     return ctrl
 end
 
+-- Shared "should the UI be shown" state used by all fader modules. Modules with
+-- extra conditions (e.g. party health, editbox focus) OR their own checks on top.
+local function is_power_at_default()
+    local pt  = UnitPowerType("player")
+    local cur = UnitPower("player")
+    if pt == 1 or pt == 6 then       -- Rage / Runic Power
+        return cur == 0
+    else                              -- Mana / Energy / Focus
+        return cur >= UnitPowerMax("player")
+    end
+end
+SPU.is_power_at_default = is_power_at_default
+
+-- Base show condition: combat, target, missing health, non-default power.
+-- NOTE: hover is intentionally NOT here — each module tracks its own frame's
+-- hover separately.
+function SPU:should_ui_show()
+    if InCombatLockdown() then return true end
+    if UnitExists("target") then return true end
+    if UnitHealth("player") < UnitHealthMax("player") then return true end
+    if not is_power_at_default() then return true end
+    return false
+end
+
 -- Slash command: /spu or /stockplus opens the options panel.
 SLASH_STOCKPLUSUI1 = "/stockplus"
 SLASH_STOCKPLUSUI2 = "/stockplusui"
