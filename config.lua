@@ -42,7 +42,12 @@ local defaults = {
         shown_alpha = 1.0,
         fade_time   = 0.25,
     },
-
+        buff_fader = {
+        enabled     = true,
+        faded_alpha = 0.2,
+        shown_alpha = 1.0,
+        fade_time   = 0.25,
+    },
 }
 
 -- Recursively merge defaults into db, descending into nested tables.

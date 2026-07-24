@@ -13,3 +13,4 @@ modules\gryphon_toggle.lua
 modules\player_frame_fader.lua
 modules\chat_enhance.lua
 modules\minimap_fader.lua
+modules\buff_fader.lua
