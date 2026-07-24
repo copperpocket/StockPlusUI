@@ -37,18 +37,24 @@ local defaults = {
         fade_time         = 0.25,
         editbox_on_top = false,
     },
-        minimap_fader = {
+    minimap_fader = {
         enabled     = true,
         shown_alpha = 1.0,
         fade_time   = 0.25,
     },
-        buff_fader = {
+    buff_fader = {
         enabled     = true,
         faded_alpha = 0.2,
         shown_alpha = 1.0,
         fade_time   = 0.25,
     },
-        party_fader = {
+    party_fader = {
+        enabled     = true,
+        faded_alpha = 0.2,
+        shown_alpha = 1.0,
+        fade_time   = 0.25,
+    },
+    objective_tracker_fader = {
         enabled     = true,
         faded_alpha = 0.2,
         shown_alpha = 1.0,
