@@ -134,6 +134,9 @@ end
 -- Re-evaluate all modules when group composition changes (for the group condition).
 SPU:register_event("PARTY_MEMBERS_CHANGED", function() SPU:refresh_all() end)
 SPU:register_event("RAID_ROSTER_UPDATE",    function() SPU:refresh_all() end)
+SPU:register_event("PLAYER_LOGIN", function()
+    if SPU.build_config_pages then SPU:build_config_pages() end
+end)
 
 -- Slash command: /spu or /stockplus opens the options panel.
 SLASH_STOCKPLUSUI1 = "/stockplus"

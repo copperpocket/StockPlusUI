@@ -1,20 +1,13 @@
--- config.lua : parent options panel, shared widget builders, child-page plumbing
+-- config.lua : parent options panel, shared widget builders, nav plumbing
 local SPU = _G["StockPlusUI"]
 
 -- ---- defaults --------------------------------------------------------------
 
 local defaults = {
-    conditions = {
-        combat       = true,    -- show in combat
-        target       = true,    -- show when a target is selected
-        group        = false,   -- show while in a party/raid
-        hp_threshold = 100,     -- show when health % is below this
-        mp_threshold = 100,     -- show when power % is below this
-    },
     action_bar_fader = {
-        faded_alpha = 0.2,   -- opacity when hidden (set 0.0 for fully invisible)
+        faded_alpha = 0.2,
         shown_alpha = 1.0,
-        fade_time   = 0.25,  -- seconds for the alpha transition
+        fade_time   = 0.25,
         bars = {
             main         = { enabled = false },
             bottom_left  = { enabled = false },
@@ -24,27 +17,25 @@ local defaults = {
         },
     },
     gryphon_toggle = {
-        hidden = false,   -- default: gryphons SHOWN (faithful to stock UI)
+        hidden = false,
     },
     player_frame_fader = {
-        enabled      = false,
-        faded_alpha  = 0.2,
-        shown_alpha  = 1.0,
-        fade_time    = 0.25,
-        hp_threshold = 100,   -- show when health % is below this
-        mp_threshold = 100,   -- show when power % is below this
+        enabled     = false,
+        faded_alpha = 0.2,
+        shown_alpha = 1.0,
+        fade_time   = 0.25,
     },
     chat_enhance = {
         bg_alpha          = 0.30,
         buttons_alpha     = 1.00,
         hide_buttons      = false,
-        faster_text_fade  = false,   -- OFF = native text fade timing
+        faster_text_fade  = false,
         text_visible_time = 10,
-        fade_tabs         = false,   -- OFF = native chat fade behavior
+        fade_tabs         = false,
         tabs_faded_alpha  = 0.20,
         tabs_shown_alpha  = 1.00,
         fade_time         = 0.25,
-        editbox_on_top = false,
+        editbox_on_top    = false,
     },
     minimap_fader = {
         enabled     = false,
@@ -80,9 +71,15 @@ local defaults = {
         cast_name     = true,
         cast_height   = 8,
     },
+    conditions = {
+        combat       = true,
+        target       = true,
+        group        = false,
+        hp_threshold = 100,
+        mp_threshold = 100,
+    },
 }
 
--- Recursively merge defaults into db, descending into nested tables.
 local function deep_merge(dst, src)
     for k, v in pairs(src) do
         if type(v) == "table" then
@@ -98,9 +95,8 @@ function SPU:apply_defaults(db)
     deep_merge(db, defaults)
 end
 
--- ---- shared widget builders (exposed on SPU so modules can use them) --------
+-- ---- shared widget builders ------------------------------------------------
 
--- Section header inside a page.
 function SPU:make_header(panel, text, anchor, gap)
     local h = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     if anchor then
@@ -108,26 +104,22 @@ function SPU:make_header(panel, text, anchor, gap)
     else
         h:SetPoint("TOPLEFT", 16, -8)
     end
-    h:SetWidth(220)                 -- constrain to content column
+    h:SetWidth(220)
     h:SetJustifyH("LEFT")
     h:SetText(text)
     h:SetTextColor(0.2, 1.0, 0.6)
     return h
 end
 
-
--- Small descriptive subtitle line.
 function SPU:make_subtitle(panel, text, anchor, gap)
     local s = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     s:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, gap or -6)
-    s:SetWidth(220)                 -- wrap long subtitles
+    s:SetWidth(220)
     s:SetJustifyH("LEFT")
     s:SetText(text)
     return s
 end
 
-
--- Checkbox bound to get()/set(bool).
 function SPU:make_checkbox(panel, name, label, anchor, gap, get, set)
     local cb = CreateFrame("CheckButton", name, panel, "InterfaceOptionsCheckButtonTemplate")
     cb:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, gap or -6)
@@ -137,13 +129,12 @@ function SPU:make_checkbox(panel, name, label, anchor, gap, get, set)
     return cb
 end
 
--- 0.0-1.0 opacity slider bound to get()/set(value).
 function SPU:make_alpha_slider(panel, name, label, anchor, gap, get, set)
     local s = CreateFrame("Slider", name, panel, "OptionsSliderTemplate")
     s:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 4, gap or -24)
     s:SetMinMaxValues(0, 1)
     s:SetValueStep(0.05)
-    s:SetWidth(160)
+    s:SetWidth(180)
     _G[s:GetName() .. "Low"]:SetText("0.0")
     _G[s:GetName() .. "High"]:SetText("1.0")
     s:SetScript("OnShow", function(self)
@@ -159,13 +150,12 @@ function SPU:make_alpha_slider(panel, name, label, anchor, gap, get, set)
     return s
 end
 
--- Generic numeric slider bound to get()/set(value), with custom range + label fmt.
 function SPU:make_slider(panel, name, label, anchor, gap, min, max, step, fmt, get, set)
     local s = CreateFrame("Slider", name, panel, "OptionsSliderTemplate")
     s:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 4, gap or -24)
     s:SetMinMaxValues(min, max)
     s:SetValueStep(step)
-    s:SetWidth(160)
+    s:SetWidth(180)
     _G[s:GetName() .. "Low"]:SetText(tostring(min))
     _G[s:GetName() .. "High"]:SetText(tostring(max))
     s:SetScript("OnShow", function(self)
@@ -181,8 +171,6 @@ function SPU:make_slider(panel, name, label, anchor, gap, min, max, step, fmt, g
     return s
 end
 
--- Wrap a config panel in a scroll frame. Returns a "content" frame to anchor
--- widgets to. Content grows; scrollbar appears on overflow.
 function SPU:make_scroll(panel, anchor_below)
     local scroll = CreateFrame("ScrollFrame", (panel:GetName() or "SPUPanel") .. "Scroll", panel, "UIPanelScrollFrameTemplate")
     if anchor_below then
@@ -191,10 +179,6 @@ function SPU:make_scroll(panel, anchor_below)
         scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -48)
     end
     scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -24, 8)
-
-    if scroll.SetClipsChildren then
-        scroll:SetClipsChildren(true)
-    end
 
     local content = CreateFrame("Frame", nil, scroll)
     content:SetSize(200, 10)
@@ -207,12 +191,11 @@ function SPU:make_scroll(panel, anchor_below)
     return content, scroll, top
 end
 
-
 -- ---- single-panel config with internal nav list ---------------------------
 
 local parent_panel
 local pages = {}           -- name -> { button, frame }
-local nav_offset = -50     -- y for stacking nav buttons
+local nav_offset
 local first_page
 
 local function select_page(name)
@@ -228,7 +211,6 @@ local function select_page(name)
 end
 
 local function build_page(page)
-    -- left-column nav button
     local btn = CreateFrame("Button", nil, parent_panel)
     btn:SetSize(130, 22)
     btn:SetPoint("TOPLEFT", parent_panel, "TOPLEFT", 16, nav_offset)
@@ -241,7 +223,6 @@ local function build_page(page)
     btn:SetScript("OnClick", function() select_page(page.name) end)
     nav_offset = nav_offset - 24
 
-    -- right-column content frame (build_fn populates this)
     local frame = CreateFrame("Frame", "StockPlusUIPage_" .. page.name:gsub("%s", ""), parent_panel)
     frame:SetPoint("TOPLEFT", parent_panel, "TOPLEFT", 160, -16)
     frame:SetPoint("BOTTOMRIGHT", parent_panel, "BOTTOMRIGHT", -16, 16)
@@ -255,12 +236,23 @@ local function build_page(page)
     end
 end
 
-function SPU:register_config(name, build_fn)
-    local page = { name = name, build = build_fn }
-    table.insert(self.config_pages, page)
-    if parent_panel then
-        build_page(page)
+-- Build all queued pages, sorted: "Conditions" first, then alphabetical.
+function SPU:build_config_pages()
+    if not parent_panel then return end
+    table.sort(self.config_pages, function(a, b)
+        if a.name == "Conditions" then return true end
+        if b.name == "Conditions" then return false end
+        return a.name < b.name
+    end)
+    nav_offset = -50
+    for i = 1, #self.config_pages do
+        build_page(self.config_pages[i])
     end
+end
+
+-- register_config now only queues; pages are built (sorted) on PLAYER_LOGIN.
+function SPU:register_config(name, build_fn)
+    table.insert(self.config_pages, { name = name, build = build_fn })
 end
 
 local function build_parent()
@@ -272,7 +264,6 @@ local function build_parent()
     title:SetText("StockPlusUI")
     title:SetTextColor(0.2, 1.0, 0.6)
 
-    -- vertical divider between nav and content
     local divider = parent_panel:CreateTexture(nil, "ARTWORK")
     divider:SetTexture(1, 1, 1, 0.15)
     divider:SetWidth(1)
@@ -281,10 +272,6 @@ local function build_parent()
 
     InterfaceOptions_AddCategory(parent_panel)
     SPU.options_panel = parent_panel
-
-    for i = 1, #SPU.config_pages do
-        build_page(SPU.config_pages[i])
-    end
 end
 
 build_parent()
