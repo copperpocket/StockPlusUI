@@ -4,6 +4,13 @@ local SPU = _G["StockPlusUI"]
 -- ---- defaults --------------------------------------------------------------
 
 local defaults = {
+    conditions = {
+        combat       = true,    -- show in combat
+        target       = true,    -- show when a target is selected
+        group        = false,   -- show while in a party/raid
+        hp_threshold = 100,     -- show when health % is below this
+        mp_threshold = 100,     -- show when power % is below this
+    },
     action_bar_fader = {
         faded_alpha = 0.2,   -- opacity when hidden (set 0.0 for fully invisible)
         shown_alpha = 1.0,
@@ -20,10 +27,12 @@ local defaults = {
         hidden = false,   -- default: gryphons SHOWN (faithful to stock UI)
     },
     player_frame_fader = {
-        enabled     = false,
-        faded_alpha = 0.2,
-        shown_alpha = 1.0,
-        fade_time   = 0.25,
+        enabled      = false,
+        faded_alpha  = 0.2,
+        shown_alpha  = 1.0,
+        fade_time    = 0.25,
+        hp_threshold = 100,   -- show when health % is below this
+        mp_threshold = 100,   -- show when power % is below this
     },
     chat_enhance = {
         bg_alpha          = 0.30,

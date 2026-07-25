@@ -7,6 +7,7 @@
 
 core.lua
 config.lua
+modules\conditions.lua
 modules\action_bar_fader.lua
 modules\game_menu_button.lua
 modules\gryphon_toggle.lua

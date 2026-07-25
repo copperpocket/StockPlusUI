@@ -35,9 +35,6 @@ function SPU:register_module(module)
 end
 
 -- Config page registry. Modules call SPU:register_config("Label", build_fn).
--- Each becomes a child page under the parent "StockPlusUI" category. build_fn
--- receives the child panel frame and populates it. Pages are built after the
--- parent panel exists (see config.lua), so we queue them until then.
 SPU.config_pages = {}   -- { { name = ..., build = ... }, ... }
 
 function SPU:register_config(name, build_fn)
@@ -95,34 +92,53 @@ function SPU:create_fader(get_frames, fade_time)
     return ctrl
 end
 
--- Shared "should the UI be shown" state used by all fader modules. Modules with
--- extra conditions (e.g. party health, editbox focus) OR their own checks on top.
-local function is_power_at_default()
-    local pt  = UnitPowerType("player")
-    local cur = UnitPower("player")
-    if pt == 1 or pt == 6 then       -- Rage / Runic Power
-        return cur == 0
-    else                              -- Mana / Energy / Focus
-        return cur >= UnitPowerMax("player")
-    end
-end
-SPU.is_power_at_default = is_power_at_default
-
--- Base show condition: combat, target, missing health, non-default power.
--- NOTE: hover is intentionally NOT here — each module tracks its own frame's
--- hover separately.
+-- Shared "should the UI be shown" state used by all fader modules. Reads the
+-- configurable conditions from db.conditions. Combat/target default ON (only
+-- skipped if explicitly disabled); group defaults OFF. Plus HP/MP thresholds.
+-- Hover is intentionally NOT here — each module tracks its own frame's hover.
 function SPU:should_ui_show()
-    if InCombatLockdown() then return true end
-    if UnitExists("target") then return true end
-    if UnitHealth("player") < UnitHealthMax("player") then return true end
-    if not is_power_at_default() then return true end
+    local c = (self.db and self.db.conditions) or {}
+
+    if c.combat ~= false and InCombatLockdown() then return true end
+    if c.target ~= false and UnitExists("target") then return true end
+    if c.group and (GetNumPartyMembers() > 0 or GetNumRaidMembers() > 0) then return true end
+
+    local hp_t = c.hp_threshold or 100
+    local mp_t = c.mp_threshold or 100
+
+    local hp_max = UnitHealthMax("player")
+    if hp_max > 0 and (UnitHealth("player") / hp_max * 100) < hp_t then
+        return true
+    end
+
+    local mp_max = UnitPowerMax("player")
+    if mp_max > 0 and (UnitPower("player") / mp_max * 100) < mp_t then
+        return true
+    end
+
     return false
 end
+
+-- Re-apply every module's fade state. Used when shared "general" settings
+-- change so all elements re-evaluate immediately.
+function SPU:refresh_all()
+    if self.apply_fade         then self:apply_fade() end
+    if self.apply_player_frame then self:apply_player_frame() end
+    if self.apply_minimap      then self:apply_minimap() end
+    if self.apply_buffs        then self:apply_buffs() end
+    if self.apply_party        then self:apply_party() end
+    if self.apply_objectives   then self:apply_objectives() end
+    if self.apply_chat_fade    then self:apply_chat_fade() end
+end
+
+-- Re-evaluate all modules when group composition changes (for the group condition).
+SPU:register_event("PARTY_MEMBERS_CHANGED", function() SPU:refresh_all() end)
+SPU:register_event("RAID_ROSTER_UPDATE",    function() SPU:refresh_all() end)
 
 -- Slash command: /spu or /stockplus opens the options panel.
 SLASH_STOCKPLUSUI1 = "/stockplus"
 SLASH_STOCKPLUSUI2 = "/stockplusui"
-SLASH_STOCKPLUSUI3 = "/sui" 
+SLASH_STOCKPLUSUI3 = "/sui"
 SLASH_STOCKPLUSUI4 = "/spui"
 SlashCmdList["STOCKPLUSUI"] = function()
     -- InterfaceOptionsFrame_OpenToCategory has a known 3.3.5 quirk: call twice.

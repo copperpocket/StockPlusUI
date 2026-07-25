@@ -33,6 +33,8 @@ local function get_frames()
     return { PlayerFrame }
 end
 
+-- Uses the shared show condition (combat / target / configurable HP-MP
+-- thresholds from the General page) plus this frame's own hover.
 local function should_show()
     return SPU:should_ui_show() or mouse_over
 end
