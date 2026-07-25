@@ -411,6 +411,9 @@ end
 -- ---- scan ------------------------------------------------------------------
 
 local function scan()
+    -- don't fight the frame stack inspector (it also polls WorldFrame)
+    if FrameStackTooltip and FrameStackTooltip:IsVisible() then return end
+
     for _, f in ipairs({ WorldFrame:GetChildren() }) do
         if type(f) == "table" and not plates[f] and is_nameplate(f) then
             register_plate(f)
