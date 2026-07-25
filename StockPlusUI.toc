@@ -17,4 +17,3 @@ modules\buff_fader.lua
 modules\party_frame_fader.lua
 modules\objective_tracker_fader.lua
 modules\nameplates.lua
-modules\_diag.lua

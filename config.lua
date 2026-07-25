@@ -61,7 +61,7 @@ local defaults = {
         fade_time   = 0.25,
     },
     nameplates = {
-        show_combo = true,
+        enabled = false,
     },
 }
 
