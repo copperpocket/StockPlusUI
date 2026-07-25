@@ -7,6 +7,7 @@ SPU:register_module(module)
 local BAR_TEX = "Interface\\TargetingFrame\\UI-TargetingFrame-BarFill"
 local FONT    = "Fonts\\FRIZQT__.TTF"
 local DAMAGE_FLASH_TIME = 3.0
+local MAX_CP  = 5
 
 local db
 local plates = {}
@@ -88,7 +89,28 @@ local function build_overlay(frame)
     skull:SetPoint("LEFT", bar, "RIGHT", 2, 0)
     skull:Hide()
 
-    return { overlay = overlay, bar = bar, name = name, level = level, glow = glow, skull = skull }
+    -- combo point dots, centered below our bar
+    local cp = {}
+    local size, gap, brd = 8, 3, 1
+    local total = MAX_CP * size + (MAX_CP - 1) * gap
+    for i = 1, MAX_CP do
+        local x = -(total / 2) + (i - 1) * (size + gap) + size / 2
+        local dbg = overlay:CreateTexture(nil, "ARTWORK")
+        dbg:SetTexture("Interface\\Buttons\\WHITE8X8")
+        dbg:SetVertexColor(0, 0, 0, 0.9)
+        dbg:SetWidth(size + brd * 2); dbg:SetHeight(size + brd * 2)
+        dbg:SetPoint("TOP", bar, "BOTTOM", x, -3)
+        dbg:Hide()
+        local dot = overlay:CreateTexture(nil, "OVERLAY")
+        dot:SetTexture("Interface\\Buttons\\WHITE8X8")
+        dot:SetWidth(size); dot:SetHeight(size)
+        dot:SetPoint("CENTER", dbg, "CENTER", 0, 0)
+        dot:Hide()
+        cp[i] = { dot = dot, bg = dbg }
+    end
+
+    return { overlay = overlay, bar = bar, name = name, level = level,
+             glow = glow, skull = skull, cp = cp }
 end
 
 -- ---- register --------------------------------------------------------------
@@ -107,7 +129,7 @@ local function register_plate(frame)
         end
     end
 
-        -- find the skull texture (shown on ??-level mobs, no target needed)
+    -- find the skull texture (shown on ??-level mobs, no target needed)
     local skull_region
     for _, r in ipairs({ frame:GetRegions() }) do
         if r.GetTexture then
@@ -178,11 +200,31 @@ local function restore_default(data)
     if data.orig_hb then
         data.orig_hb:SetAlpha(1)
     end
-
     for _, fs in ipairs(data.orig_fs) do
         if fs._spu_last then fs:SetText(fs._spu_last) end
     end
     data.ui.overlay:Hide()
+end
+
+-- ---- combo point display ---------------------------------------------------
+
+local function update_combo(data, is_target)
+    local cp = (is_target and UnitExists("target")) and GetComboPoints("player", "target") or 0
+    local full = (cp >= MAX_CP)
+    for i = 1, MAX_CP do
+        local e = data.ui.cp[i]
+        if is_target and cp > 0 then
+            e.bg:Show(); e.dot:Show()
+            if i <= cp then
+                if full then e.dot:SetVertexColor(1.0, 0.85, 0.10, 1.0)
+                else         e.dot:SetVertexColor(0.75, 0.75, 0.75, 1.0) end
+            else
+                e.dot:SetVertexColor(0.25, 0.25, 0.25, 0.9)
+            end
+        else
+            e.bg:Hide(); e.dot:Hide()
+        end
+    end
 end
 
 -- ---- per-plate update ------------------------------------------------------
@@ -205,8 +247,7 @@ local function update_plate(frame, data)
 
     data.ui.name:SetText(data._name or "")
 
-    -- Level / skull display. A ??-level mob shows Blizzard's skull region
-    -- (shown without targeting); we mirror that with our own skull icon.
+    -- Level / skull display.
     local is_skull = data.skull_region and data.skull_region:IsShown()
     if is_skull then
         data.ui.level:SetText("")
@@ -231,19 +272,24 @@ local function update_plate(frame, data)
         data.ui.name:SetTextColor(1, 1, 1)
     end
 
-    -- Glow = aggro on us (target plate only)
-    local has_aggro = frame:GetAlpha() > 0.9 and UnitExists("target")
-                      and UnitIsUnit("targettarget", "player")
-    if has_aggro then data.ui.glow:Show() else data.ui.glow:Hide() end
+    local is_target = frame:GetAlpha() > 0.9 and UnitExists("target")
 
-    -- mirror health value AND current reaction color every pass (handles frame
-    -- recycling — the bar always matches the original's live color)
+    -- Glow = aggro on us (target plate only)
+    if is_target and UnitIsUnit("targettarget", "player") then
+        data.ui.glow:Show()
+    else
+        data.ui.glow:Hide()
+    end
+
+    -- Combo points (target plate only, rogues / feral druids)
+    update_combo(data, is_target)
+
+    -- mirror health value + reaction color every pass (handles recycling)
     local hb = data.orig_hb
     if hb then
         local mn, mx = hb:GetMinMaxValues()
         data.ui.bar:SetMinMaxValues(mn, mx)
         data.ui.bar:SetValue(hb:GetValue())
-
         local cr, cg, cb = hb:GetStatusBarColor()
         if cr then data.ui.bar:SetStatusBarColor(cr, cg, cb) end
     end
