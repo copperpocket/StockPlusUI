@@ -460,7 +460,7 @@ SPU:register_config("Nameplates", function(panel)
     local sub    = SPU:make_subtitle(panel, "Custom nameplates faithful to the default.", header)
 
     -- everything below scrolls
-    local content, scroll, top = SPU:make_scroll(panel)
+    local content, scroll, top = SPU:make_scroll(panel, sub)
 
     local enable = SPU:make_checkbox(content, "StockPlusUINameplateEnable", "Enable custom nameplates", top, -8,
         function() return n().enabled end,

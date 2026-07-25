@@ -317,43 +317,46 @@ function chat:on_init(settings)
 end
 
 -- ---- config page (ordered to match other sections) -------------------------
-
 SPU:register_config("Chat", function(panel)
     local c = function() return SPU.db.chat_enhance end
 
     local header = SPU:make_header(panel, "Chat", nil)
     local sub    = SPU:make_subtitle(panel, "Enhance chat opacity and fading. With toggles off, chat behaves like default WoW.", header)
 
-    local fade_tabs = SPU:make_checkbox(panel, "StockPlusUIChatFadeTabs", "Fade chat frame", sub, -12,
+    local content, scroll, top = SPU:make_scroll(panel, sub)
+
+    local fade_tabs = SPU:make_checkbox(content, "StockPlusUIChatFadeTabs", "Fade chat frame", top, -8,
         function() return c().fade_tabs end,
         function(v) c().fade_tabs = v; if SPU.refresh_chat_fade then SPU:refresh_chat_fade() end end)
 
-    local faded = SPU:make_alpha_slider(panel, "StockPlusUIChatTabsAlpha", "Faded opacity", fade_tabs, -22,
+    local faded = SPU:make_alpha_slider(content, "StockPlusUIChatTabsAlpha", "Faded opacity", fade_tabs, -22,
         function() return c().tabs_faded_alpha end,
         function(v) c().tabs_faded_alpha = v; if SPU.refresh_chat_fade then SPU:refresh_chat_fade() end end)
 
-    local bg = SPU:make_alpha_slider(panel, "StockPlusUIChatBgAlpha", "Background opacity", faded, -32,
+    local bg = SPU:make_alpha_slider(content, "StockPlusUIChatBgAlpha", "Background opacity", faded, -32,
         function() return c().bg_alpha end,
         function(v) c().bg_alpha = v; if SPU.refresh_chat then SPU:refresh_chat() end end)
 
-    local hide = SPU:make_checkbox(panel, "StockPlusUIChatHideButtons", "Hide side buttons", bg, -32,
+    local hide = SPU:make_checkbox(content, "StockPlusUIChatHideButtons", "Hide side buttons", bg, -32,
         function() return c().hide_buttons end,
         function(v) c().hide_buttons = v; if SPU.refresh_chat then SPU:refresh_chat() end end)
 
-    local btn = SPU:make_alpha_slider(panel, "StockPlusUIChatBtnAlpha", "Side button opacity", hide, -22,
+    local btn = SPU:make_alpha_slider(content, "StockPlusUIChatBtnAlpha", "Side button opacity", hide, -22,
         function() return c().buttons_alpha end,
         function(v) c().buttons_alpha = v; if SPU.refresh_chat then SPU:refresh_chat() end end)
 
-    local ftf = SPU:make_checkbox(panel, "StockPlusUIChatFasterText", "Faster text fade", btn, -32,
+    local ftf = SPU:make_checkbox(content, "StockPlusUIChatFasterText", "Faster text fade", btn, -32,
         function() return c().faster_text_fade end,
         function(v) c().faster_text_fade = v; if SPU.refresh_chat then SPU:refresh_chat() end end)
 
-    local vis = SPU:make_slider(panel, "StockPlusUIChatVisTime", "Text visible time", ftf, -22,
+    local vis = SPU:make_slider(content, "StockPlusUIChatVisTime", "Text visible time", ftf, -22,
         5, 60, 1, "Text visible time: %ds",
         function() return c().text_visible_time end,
         function(v) c().text_visible_time = v; if SPU.refresh_chat then SPU:refresh_chat() end end)
 
-    SPU:make_checkbox(panel, "StockPlusUIChatEditTop", "Edit box on top", vis, -14,
+    SPU:make_checkbox(content, "StockPlusUIChatEditTop", "Edit box on top", vis, -14,
         function() return c().editbox_on_top end,
         function(v) c().editbox_on_top = v; if SPU.refresh_chat then SPU:refresh_chat() end end)
+
+    content:SetHeight(360)
 end)

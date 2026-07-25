@@ -97,20 +97,26 @@ function SPU:make_header(panel, text, anchor, gap)
     if anchor then
         h:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, gap or -20)
     else
-        h:SetPoint("TOPLEFT", 16, -16)
+        h:SetPoint("TOPLEFT", 16, -8)
     end
+    h:SetWidth(220)                 -- constrain to content column
+    h:SetJustifyH("LEFT")
     h:SetText(text)
     h:SetTextColor(0.2, 1.0, 0.6)
     return h
 end
 
+
 -- Small descriptive subtitle line.
 function SPU:make_subtitle(panel, text, anchor, gap)
     local s = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    s:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, gap or -8)
+    s:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, gap or -6)
+    s:SetWidth(220)                 -- wrap long subtitles
+    s:SetJustifyH("LEFT")
     s:SetText(text)
     return s
 end
+
 
 -- Checkbox bound to get()/set(bool).
 function SPU:make_checkbox(panel, name, label, anchor, gap, get, set)
@@ -128,7 +134,7 @@ function SPU:make_alpha_slider(panel, name, label, anchor, gap, get, set)
     s:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 4, gap or -24)
     s:SetMinMaxValues(0, 1)
     s:SetValueStep(0.05)
-    s:SetWidth(240)
+    s:SetWidth(160)
     _G[s:GetName() .. "Low"]:SetText("0.0")
     _G[s:GetName() .. "High"]:SetText("1.0")
     s:SetScript("OnShow", function(self)
@@ -150,7 +156,7 @@ function SPU:make_slider(panel, name, label, anchor, gap, min, max, step, fmt, g
     s:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 4, gap or -24)
     s:SetMinMaxValues(min, max)
     s:SetValueStep(step)
-    s:SetWidth(240)
+    s:SetWidth(160)
     _G[s:GetName() .. "Low"]:SetText(tostring(min))
     _G[s:GetName() .. "High"]:SetText(tostring(max))
     s:SetScript("OnShow", function(self)
@@ -168,21 +174,23 @@ end
 
 -- Wrap a config panel in a scroll frame. Returns a "content" frame to anchor
 -- widgets to. Content grows; scrollbar appears on overflow.
-function SPU:make_scroll(panel)
+function SPU:make_scroll(panel, anchor_below)
     local scroll = CreateFrame("ScrollFrame", (panel:GetName() or "SPUPanel") .. "Scroll", panel, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -48)
-    scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -28, 8)
+    if anchor_below then
+        scroll:SetPoint("TOPLEFT", anchor_below, "BOTTOMLEFT", 0, -12)
+    else
+        scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -48)
+    end
+    scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -24, 8)
+
+    if scroll.SetClipsChildren then
+        scroll:SetClipsChildren(true)
+    end
 
     local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(300, 10)          -- start SHORT; grows via SetHeight later
+    content:SetSize(200, 10)
     scroll:SetScrollChild(content)
 
-    scroll:SetScript("OnSizeChanged", function(self, w)
-        if w and w > 0 then content:SetWidth(w) end
-    end)
-
-    -- a tiny invisible anchor pinned to the TOP of content, so the first
-    -- widget (which anchors to BOTTOMLEFT of its anchor) starts at the top
     local top = CreateFrame("Frame", nil, content)
     top:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
     top:SetSize(1, 1)
@@ -191,26 +199,58 @@ function SPU:make_scroll(panel)
 end
 
 
--- ---- parent + child page plumbing ------------------------------------------
+-- ---- single-panel config with internal nav list ---------------------------
 
 local parent_panel
+local pages = {}           -- name -> { button, frame }
+local nav_offset = -50     -- y for stacking nav buttons
+local first_page
 
--- Build a child page under the parent category and hand it to build_fn.
-local function build_child(page)
-    local child = CreateFrame("Frame", "StockPlusUIConfig_" .. page.name:gsub("%s", ""), InterfaceOptionsFramePanelContainer)
-    child.name   = page.name
-    child.parent = parent_panel.name   -- nests under "StockPlusUI" in the tree
-    page.build(child)
-    InterfaceOptions_AddCategory(child)
+local function select_page(name)
+    for n, entry in pairs(pages) do
+        if n == name then
+            entry.frame:Show()
+            entry.button:LockHighlight()
+        else
+            entry.frame:Hide()
+            entry.button:UnlockHighlight()
+        end
+    end
 end
 
--- register_config: if the parent already exists, build immediately; otherwise
--- it stays queued in SPU.config_pages and gets built when the parent is created.
+local function build_page(page)
+    -- left-column nav button
+    local btn = CreateFrame("Button", nil, parent_panel)
+    btn:SetSize(130, 22)
+    btn:SetPoint("TOPLEFT", parent_panel, "TOPLEFT", 16, nav_offset)
+    local txt = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    txt:SetPoint("LEFT", 4, 0)
+    txt:SetText(page.name)
+    btn:SetFontString(txt)
+    btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+    btn:GetHighlightTexture():SetBlendMode("ADD")
+    btn:SetScript("OnClick", function() select_page(page.name) end)
+    nav_offset = nav_offset - 24
+
+    -- right-column content frame (build_fn populates this)
+    local frame = CreateFrame("Frame", "StockPlusUIPage_" .. page.name:gsub("%s", ""), parent_panel)
+    frame:SetPoint("TOPLEFT", parent_panel, "TOPLEFT", 160, -16)
+    frame:SetPoint("BOTTOMRIGHT", parent_panel, "BOTTOMRIGHT", -16, 16)
+    frame:Hide()
+    page.build(frame)
+
+    pages[page.name] = { button = btn, frame = frame }
+    if not first_page then
+        first_page = page.name
+        select_page(first_page)
+    end
+end
+
 function SPU:register_config(name, build_fn)
     local page = { name = name, build = build_fn }
     table.insert(self.config_pages, page)
     if parent_panel then
-        build_child(page)
+        build_page(page)
     end
 end
 
@@ -218,20 +258,23 @@ local function build_parent()
     parent_panel = CreateFrame("Frame", "StockPlusUIOptionsPanel", InterfaceOptionsFramePanelContainer)
     parent_panel.name = "StockPlusUI"
 
-    SPU:make_header(parent_panel, "StockPlusUI", nil)
-    local sub = SPU:make_subtitle(parent_panel,
-        "A faithful overhaul of the default UI. Select a section on the left.",
-        parent_panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge"))
-    -- (the throwaway fontstring above just gives make_subtitle an anchor; simpler:)
-    sub:ClearAllPoints()
-    sub:SetPoint("TOPLEFT", 16, -44)
+    local title = parent_panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 16, -16)
+    title:SetText("StockPlusUI")
+    title:SetTextColor(0.2, 1.0, 0.6)
+
+    -- vertical divider between nav and content
+    local divider = parent_panel:CreateTexture(nil, "ARTWORK")
+    divider:SetTexture(1, 1, 1, 0.15)
+    divider:SetWidth(1)
+    divider:SetPoint("TOPLEFT", parent_panel, "TOPLEFT", 150, -12)
+    divider:SetPoint("BOTTOMLEFT", parent_panel, "BOTTOMLEFT", 150, 12)
 
     InterfaceOptions_AddCategory(parent_panel)
     SPU.options_panel = parent_panel
 
-    -- Build any pages modules queued before us.
     for i = 1, #SPU.config_pages do
-        build_child(SPU.config_pages[i])
+        build_page(SPU.config_pages[i])
     end
 end
 
