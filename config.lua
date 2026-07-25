@@ -60,6 +60,9 @@ local defaults = {
         shown_alpha = 1.0,
         fade_time   = 0.25,
     },
+    nameplates = {
+        show_combo = true,
+    },
 }
 
 -- Recursively merge defaults into db, descending into nested tables.
@@ -121,8 +124,9 @@ function SPU:make_alpha_slider(panel, name, label, anchor, gap, get, set)
     _G[s:GetName() .. "Low"]:SetText("0.0")
     _G[s:GetName() .. "High"]:SetText("1.0")
     s:SetScript("OnShow", function(self)
-        self:SetValue(get())
-        _G[self:GetName() .. "Text"]:SetText(string.format("%s: %.2f", label, get()))
+        local v = get() or 0
+        self:SetValue(v)
+        _G[self:GetName() .. "Text"]:SetText(string.format("%s: %.2f", label, v))
     end)
     s:SetScript("OnValueChanged", function(self, value)
         value = math.floor(value * 20 + 0.5) / 20
@@ -142,8 +146,9 @@ function SPU:make_slider(panel, name, label, anchor, gap, min, max, step, fmt, g
     _G[s:GetName() .. "Low"]:SetText(tostring(min))
     _G[s:GetName() .. "High"]:SetText(tostring(max))
     s:SetScript("OnShow", function(self)
-        self:SetValue(get())
-        _G[self:GetName() .. "Text"]:SetText(string.format(fmt, get()))
+        local v = get() or min
+        self:SetValue(v)
+        _G[self:GetName() .. "Text"]:SetText(string.format(fmt, v))
     end)
     s:SetScript("OnValueChanged", function(self, value)
         value = math.floor(value / step + 0.5) * step
