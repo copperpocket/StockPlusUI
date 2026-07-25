@@ -9,18 +9,18 @@ local defaults = {
         shown_alpha = 1.0,
         fade_time   = 0.25,  -- seconds for the alpha transition
         bars = {
-            main         = { enabled = true },
-            bottom_left  = { enabled = true },
-            bottom_right = { enabled = true },
-            right_1      = { enabled = true },
-            right_2      = { enabled = true },
+            main         = { enabled = false },
+            bottom_left  = { enabled = false },
+            bottom_right = { enabled = false },
+            right_1      = { enabled = false },
+            right_2      = { enabled = false },
         },
     },
     gryphon_toggle = {
         hidden = false,   -- default: gryphons SHOWN (faithful to stock UI)
     },
     player_frame_fader = {
-        enabled     = true,
+        enabled     = false,
         faded_alpha = 0.2,
         shown_alpha = 1.0,
         fade_time   = 0.25,
@@ -38,24 +38,24 @@ local defaults = {
         editbox_on_top = false,
     },
     minimap_fader = {
-        enabled     = true,
+        enabled     = false,
         shown_alpha = 1.0,
         fade_time   = 0.25,
     },
     buff_fader = {
-        enabled     = true,
+        enabled     = false,
         faded_alpha = 0.2,
         shown_alpha = 1.0,
         fade_time   = 0.25,
     },
     party_fader = {
-        enabled     = true,
+        enabled     = false,
         faded_alpha = 0.2,
         shown_alpha = 1.0,
         fade_time   = 0.25,
     },
     objective_tracker_fader = {
-        enabled     = true,
+        enabled     = false,
         faded_alpha = 0.2,
         shown_alpha = 1.0,
         fade_time   = 0.25,

@@ -467,22 +467,22 @@ SPU:register_config("Nameplates", function(panel)
         function(v) n().enabled = v end)
 
     local bw = SPU:make_slider(content, "StockPlusUINPBarWidth", "Bar width", enable, -30,
-        60, 200, 5, "Bar width: %d |cff888888(def 110)|r",
+        60, 200, 5, "Bar width: %dpx |cff888888(110)|r",
         function() return n().bar_width end,
         function(v) n().bar_width = v end)
 
     local bh = SPU:make_slider(content, "StockPlusUINPBarHeight", "Bar height", bw, -40,
-        4, 20, 1, "Bar height: %d |cff888888(def 10)|r",
+        4, 20, 1, "Bar height: %dpx |cff888888(10)|r",
         function() return n().bar_height end,
         function(v) n().bar_height = v end)
 
     local ns = SPU:make_slider(content, "StockPlusUINPNameSize", "Name size", bh, -40,
-        6, 18, 1, "Name size: %d |cff888888(def 10)|r",
+        6, 18, 1, "Name size: %dpx |cff888888(10)|r",
         function() return n().name_size end,
         function(v) n().name_size = v end)
 
     local ls = SPU:make_slider(content, "StockPlusUINPLevelSize", "Level size", ns, -40,
-        6, 18, 1, "Level size: %d |cff888888(def 10)|r",
+        6, 18, 1, "Level size: %dpx |cff888888(10)|r",
         function() return n().level_size end,
         function(v) n().level_size = v end)
 
