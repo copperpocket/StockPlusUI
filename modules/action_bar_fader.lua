@@ -48,7 +48,7 @@ end)
 -- Per-bar definitions. Each key gets its own enabled setting, config checkbox,
 -- and fade driver, so any bar can fade while others stay put.
 local bar_defs = {
-    { key = "main",         label = "Fade main bar",         frames = { "MainMenuBarArtFrame", "BonusActionBarFrame", "MainMenuExpBar", "ReputationWatchBar" } },
+    { key = "main",         label = "Fade main bar",         frames = { "MainMenuBarArtFrame", "BonusActionBarFrame", "MainMenuExpBar", "ReputationWatchBar, ExhaustionTick" } },
     { key = "bottom_left",  label = "Fade bottom-left bar",  frames = { "MultiBarBottomLeft" } },
     { key = "bottom_right", label = "Fade bottom-right bar", frames = { "MultiBarBottomRight" } },
     { key = "right_1",      label = "Fade right bar 1",      frames = { "MultiBarRight" } },
@@ -145,6 +145,11 @@ poller:SetScript("OnUpdate", function(_, dt)
     if over ~= mouse_over then
         mouse_over = over
         apply_fade()
+    end
+    -- reassert exhaustion tick alpha (Blizzard re-shows it via exp bar updates)
+    local tick = _G["ExhaustionTick"]
+    if tick and db and db.bars.main and db.bars.main.enabled and current["main"] then
+        tick:SetAlpha(current["main"])
     end
 end)
 
