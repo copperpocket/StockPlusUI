@@ -61,7 +61,15 @@ local defaults = {
         fade_time   = 0.25,
     },
     nameplates = {
-        enabled = false,
+        enabled       = false,
+        bar_width     = 110,
+        bar_height    = 10,
+        name_size     = 10,
+        level_size    = 10,
+        cast_enabled  = true,
+        cast_icon     = true,
+        cast_name     = true,
+        cast_height   = 8,
     },
 }
 
@@ -156,6 +164,30 @@ function SPU:make_slider(panel, name, label, anchor, gap, min, max, step, fmt, g
         _G[self:GetName() .. "Text"]:SetText(string.format(fmt, value))
     end)
     return s
+end
+
+-- Wrap a config panel in a scroll frame. Returns a "content" frame to anchor
+-- widgets to. Content grows; scrollbar appears on overflow.
+function SPU:make_scroll(panel)
+    local scroll = CreateFrame("ScrollFrame", (panel:GetName() or "SPUPanel") .. "Scroll", panel, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -48)
+    scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -28, 8)
+
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetSize(300, 10)          -- start SHORT; grows via SetHeight later
+    scroll:SetScrollChild(content)
+
+    scroll:SetScript("OnSizeChanged", function(self, w)
+        if w and w > 0 then content:SetWidth(w) end
+    end)
+
+    -- a tiny invisible anchor pinned to the TOP of content, so the first
+    -- widget (which anchors to BOTTOMLEFT of its anchor) starts at the top
+    local top = CreateFrame("Frame", nil, content)
+    top:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+    top:SetSize(1, 1)
+
+    return content, scroll, top
 end
 
 

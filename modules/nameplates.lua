@@ -109,8 +109,34 @@ local function build_overlay(frame)
         cp[i] = { dot = dot, bg = dbg }
     end
 
+    -- cast bar (target only)
+    local cast = CreateFrame("StatusBar", nil, overlay)
+    cast:SetStatusBarTexture(BAR_TEX)
+    cast:SetStatusBarColor(1, 0.7, 0)
+    cast:SetPoint("TOP", bar, "BOTTOM", 0, -14)
+    cast:SetWidth(110)
+    cast:SetHeight(8)
+    cast:Hide()
+
+    local cast_bg = cast:CreateTexture(nil, "BACKGROUND")
+    cast_bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    cast_bg:SetVertexColor(0, 0, 0, 0.6)
+    cast_bg:SetPoint("TOPLEFT", cast, "TOPLEFT", -1, 1)
+    cast_bg:SetPoint("BOTTOMRIGHT", cast, "BOTTOMRIGHT", 1, -1)
+
+    local cast_icon = cast:CreateTexture(nil, "OVERLAY")
+    cast_icon:SetWidth(10); cast_icon:SetHeight(10)
+    cast_icon:SetPoint("RIGHT", cast, "LEFT", -2, 0)
+    cast_icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+    local cast_text = cast:CreateFontString(nil, "OVERLAY")
+    cast_text:SetFont(FONT, 8, "OUTLINE")
+    cast_text:SetPoint("CENTER", cast, "CENTER", 0, 0)
+    cast_text:SetTextColor(1, 1, 1)
+
     return { overlay = overlay, bar = bar, name = name, level = level,
-             glow = glow, skull = skull, cp = cp }
+             glow = glow, skull = skull, cp = cp,
+             cast = cast, cast_icon = cast_icon, cast_text = cast_text }
 end
 
 -- ---- register --------------------------------------------------------------
@@ -129,7 +155,6 @@ local function register_plate(frame)
         end
     end
 
-    -- find the skull texture (shown on ??-level mobs, no target needed)
     local skull_region
     for _, r in ipairs({ frame:GetRegions() }) do
         if r.GetTexture then
@@ -174,9 +199,45 @@ local function register_plate(frame)
     frame:HookScript("OnShow", function(self)
         local d = plates[self]
         if db and db.enabled and type(d) == "table" then
-            for r in pairs(d.orig_textures) do r:SetTexture(nil) end
+            for _, r in ipairs({ self:GetRegions() }) do
+                if r.GetObjectType and r:GetObjectType() == "Texture" then
+                    r:SetTexture(nil)
+                end
+            end
         end
     end)
+end
+
+-- Suppress Blizzard's reparented cast bar (icon reappears when a cast starts).
+local function suppress_default_cast(data)
+    local cb = data.castbar
+    if not cb then return end
+    cb:Hide()
+    cb:SetAlpha(0)
+    for _, r in ipairs({ cb:GetRegions() }) do
+        if r.GetObjectType and r:GetObjectType() == "Texture" then
+            r:SetTexture(nil)
+        end
+    end
+    for _, child in ipairs({ cb:GetChildren() }) do
+        child:Hide()
+        for _, r in ipairs({ child:GetRegions() }) do
+            if r.GetObjectType and r:GetObjectType() == "Texture" then
+                r:SetTexture(nil)
+            end
+        end
+    end
+end
+
+-- Apply configurable sizes to a plate's overlay.
+local function apply_sizes(data)
+    local ui = data.ui
+    ui.bar:SetWidth(db.bar_width or 110)
+    ui.bar:SetHeight(db.bar_height or 10)
+    ui.cast:SetWidth(db.bar_width or 110)
+    ui.cast:SetHeight(db.cast_height or 8)
+    ui.name:SetFont(FONT, db.name_size or 10, "OUTLINE")
+    ui.level:SetFont(FONT, db.level_size or 10, "OUTLINE")
 end
 
 -- ---- enable/disable a single plate -----------------------------------------
@@ -184,8 +245,9 @@ end
 local function hide_default(data)
     if data.hidden then return end
     data.hidden = true
-    if data.castbar then data.castbar:SetParent(hidden_holder) end
-    for r in pairs(data.orig_textures) do r:SetTexture(nil) end
+    if data.castbar then
+        data.castbar:SetParent(hidden_holder)
+    end
     if data.orig_hb then data.orig_hb:SetAlpha(0) end
     data.ui.overlay:Show()
 end
@@ -227,6 +289,51 @@ local function update_combo(data, is_target)
     end
 end
 
+-- ---- cast bar display (target only) ----------------------------------------
+
+local function update_cast(data, is_target)
+    local ui = data.ui
+    if not is_target or not db.cast_enabled then
+        ui.cast:Hide()
+        return
+    end
+
+    local name, _, _, texture, startMS, endMS = UnitCastingInfo("target")
+    local channel = false
+    if not name then
+        name, _, _, texture, startMS, endMS = UnitChannelInfo("target")
+        channel = true
+    end
+
+    if name and startMS and endMS then
+        local now = GetTime() * 1000
+        local duration = endMS - startMS
+        local elapsed = now - startMS
+        if duration > 0 then
+            local pct = elapsed / duration
+            if channel then pct = 1 - pct end
+            if pct < 0 then pct = 0 elseif pct > 1 then pct = 1 end
+            ui.cast:SetMinMaxValues(0, 1)
+            ui.cast:SetValue(pct)
+
+            -- spell name (optional)
+            if db.cast_name then ui.cast_text:SetText(name) else ui.cast_text:SetText("") end
+
+            -- spell icon (optional)
+            if db.cast_icon and texture then
+                ui.cast_icon:SetTexture(texture)
+                ui.cast_icon:Show()
+            else
+                ui.cast_icon:Hide()
+            end
+
+            ui.cast:Show()
+            return
+        end
+    end
+    ui.cast:Hide()
+end
+
 -- ---- per-plate update ------------------------------------------------------
 
 local function update_plate(frame, data)
@@ -235,6 +342,8 @@ local function update_plate(frame, data)
         return
     end
     hide_default(data)
+    suppress_default_cast(data)
+    apply_sizes(data)
 
     for _, fs in ipairs(data.orig_fs) do
         local txt = fs:GetText()
@@ -247,7 +356,6 @@ local function update_plate(frame, data)
 
     data.ui.name:SetText(data._name or "")
 
-    -- Level / skull display.
     local is_skull = data.skull_region and data.skull_region:IsShown()
     if is_skull then
         data.ui.level:SetText("")
@@ -264,7 +372,6 @@ local function update_plate(frame, data)
         end
     end
 
-    -- Name red = recently damaged (any source, matched by name via combat log)
     local last_hit = data._name and damaged_names[data._name]
     if last_hit and (GetTime() - last_hit) <= DAMAGE_FLASH_TIME then
         data.ui.name:SetTextColor(1, 0, 0)
@@ -274,17 +381,15 @@ local function update_plate(frame, data)
 
     local is_target = frame:GetAlpha() > 0.9 and UnitExists("target")
 
-    -- Glow = aggro on us (target plate only)
     if is_target and UnitIsUnit("targettarget", "player") then
         data.ui.glow:Show()
     else
         data.ui.glow:Hide()
     end
 
-    -- Combo points (target plate only, rogues / feral druids)
     update_combo(data, is_target)
+    update_cast(data, is_target)
 
-    -- mirror health value + reaction color every pass (handles recycling)
     local hb = data.orig_hb
     if hb then
         local mn, mx = hb:GetMinMaxValues()
@@ -294,7 +399,13 @@ local function update_plate(frame, data)
         if cr then data.ui.bar:SetStatusBarColor(cr, cg, cb) end
     end
 
-    for r in pairs(data.orig_textures) do r:SetTexture(nil) end
+    -- blank ALL current plate textures (catches dynamically-added ones like
+    -- the cast icon)
+    for _, r in ipairs({ frame:GetRegions() }) do
+        if r.GetObjectType and r:GetObjectType() == "Texture" then
+            r:SetTexture(nil)
+        end
+    end
 end
 
 -- ---- scan ------------------------------------------------------------------
@@ -343,10 +454,55 @@ end
 
 SPU:register_config("Nameplates", function(panel)
     local n = function() return SPU.db.nameplates end
+
+    -- header/subtitle stay fixed on the panel, above the scroll
     local header = SPU:make_header(panel, "Nameplates", nil)
     local sub    = SPU:make_subtitle(panel, "Custom nameplates faithful to the default.", header)
 
-    SPU:make_checkbox(panel, "StockPlusUINameplateEnable", "Enable custom nameplates", sub, -16,
+    -- everything below scrolls
+    local content, scroll, top = SPU:make_scroll(panel)
+
+    local enable = SPU:make_checkbox(content, "StockPlusUINameplateEnable", "Enable custom nameplates", top, -8,
         function() return n().enabled end,
         function(v) n().enabled = v end)
+
+    local bw = SPU:make_slider(content, "StockPlusUINPBarWidth", "Bar width", enable, -30,
+        60, 200, 5, "Bar width: %d |cff888888(def 110)|r",
+        function() return n().bar_width end,
+        function(v) n().bar_width = v end)
+
+    local bh = SPU:make_slider(content, "StockPlusUINPBarHeight", "Bar height", bw, -40,
+        4, 20, 1, "Bar height: %d |cff888888(def 10)|r",
+        function() return n().bar_height end,
+        function(v) n().bar_height = v end)
+
+    local ns = SPU:make_slider(content, "StockPlusUINPNameSize", "Name size", bh, -40,
+        6, 18, 1, "Name size: %d |cff888888(def 10)|r",
+        function() return n().name_size end,
+        function(v) n().name_size = v end)
+
+    local ls = SPU:make_slider(content, "StockPlusUINPLevelSize", "Level size", ns, -40,
+        6, 18, 1, "Level size: %d |cff888888(def 10)|r",
+        function() return n().level_size end,
+        function(v) n().level_size = v end)
+
+    local ce = SPU:make_checkbox(content, "StockPlusUINPCastEnable", "Show cast bar", ls, -16,
+        function() return n().cast_enabled end,
+        function(v) n().cast_enabled = v end)
+
+    local ci = SPU:make_checkbox(content, "StockPlusUINPCastIcon", "Show spell icon", ce, -6,
+        function() return n().cast_icon end,
+        function(v) n().cast_icon = v end)
+
+    local cn = SPU:make_checkbox(content, "StockPlusUINPCastName", "Show spell name", ci, -6,
+        function() return n().cast_name end,
+        function(v) n().cast_name = v end)
+
+    SPU:make_slider(content, "StockPlusUINPCastHeight", "Cast bar height", cn, -30,
+        4, 20, 1, "Cast bar height: %d |cff888888(def 8)|r",
+        function() return n().cast_height end,
+        function(v) n().cast_height = v end)
+
+    content:SetHeight(420)
 end)
+
