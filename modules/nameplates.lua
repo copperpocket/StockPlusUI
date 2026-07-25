@@ -11,7 +11,6 @@ local MAX_CP  = 5
 
 local db
 local plates = {}
-local damaged_names = {}
 local hidden_holder = CreateFrame("Frame")
 hidden_holder:Hide()
 
@@ -193,12 +192,15 @@ local function register_plate(frame)
         _name          = "",
         _level         = "",
         skull_region   = skull_region,
+        _last_hp       = nil,   -- for per-plate damage detection
+        _last_damage   = 0,     -- GetTime() of last health decrease
     }
     plates[frame] = data
 
     frame:HookScript("OnShow", function(self)
         local d = plates[self]
         if db and db.enabled and type(d) == "table" then
+            d._last_hp = nil   -- reset: recycled plate is a new unit
             for _, r in ipairs({ self:GetRegions() }) do
                 if r.GetObjectType and r:GetObjectType() == "Texture" then
                     r:SetTexture(nil)
@@ -316,10 +318,8 @@ local function update_cast(data, is_target)
             ui.cast:SetMinMaxValues(0, 1)
             ui.cast:SetValue(pct)
 
-            -- spell name (optional)
             if db.cast_name then ui.cast_text:SetText(name) else ui.cast_text:SetText("") end
 
-            -- spell icon (optional)
             if db.cast_icon and texture then
                 ui.cast_icon:SetTexture(texture)
                 ui.cast_icon:Show()
@@ -372,8 +372,25 @@ local function update_plate(frame, data)
         end
     end
 
-    local last_hit = data._name and damaged_names[data._name]
-    if last_hit and (GetTime() - last_hit) <= DAMAGE_FLASH_TIME then
+    -- mirror health value + reaction color, and detect THIS plate's damage
+    local hb = data.orig_hb
+    if hb then
+        local mn, mx = hb:GetMinMaxValues()
+        local val = hb:GetValue()
+        data.ui.bar:SetMinMaxValues(mn, mx)
+        data.ui.bar:SetValue(val)
+        local cr, cg, cb = hb:GetStatusBarColor()
+        if cr then data.ui.bar:SetStatusBarColor(cr, cg, cb) end
+
+        -- per-plate recently-damaged detection: this plate's health dropped
+        if data._last_hp and val < data._last_hp then
+            data._last_damage = GetTime()
+        end
+        data._last_hp = val
+    end
+
+    -- name red = THIS plate was recently damaged (per-plate, no name collision)
+    if (GetTime() - data._last_damage) <= DAMAGE_FLASH_TIME then
         data.ui.name:SetTextColor(1, 0, 0)
     else
         data.ui.name:SetTextColor(1, 1, 1)
@@ -390,17 +407,7 @@ local function update_plate(frame, data)
     update_combo(data, is_target)
     update_cast(data, is_target)
 
-    local hb = data.orig_hb
-    if hb then
-        local mn, mx = hb:GetMinMaxValues()
-        data.ui.bar:SetMinMaxValues(mn, mx)
-        data.ui.bar:SetValue(hb:GetValue())
-        local cr, cg, cb = hb:GetStatusBarColor()
-        if cr then data.ui.bar:SetStatusBarColor(cr, cg, cb) end
-    end
-
-    -- blank ALL current plate textures (catches dynamically-added ones like
-    -- the cast icon)
+    -- blank ALL current plate textures (catches dynamically-added ones)
     for _, r in ipairs({ frame:GetRegions() }) do
         if r.GetObjectType and r:GetObjectType() == "Texture" then
             r:SetTexture(nil)
@@ -411,7 +418,6 @@ end
 -- ---- scan ------------------------------------------------------------------
 
 local function scan()
-    -- don't fight the frame stack inspector (it also polls WorldFrame)
     if FrameStackTooltip and FrameStackTooltip:IsVisible() then return end
 
     for _, f in ipairs({ WorldFrame:GetChildren() }) do
@@ -425,21 +431,6 @@ local function scan()
         end
     end
 end
-
--- ---- combat log: record which mob names took damage ------------------------
-
-local cl = CreateFrame("Frame")
-cl:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-cl:SetScript("OnEvent", function(_, event, timestamp, subevent, srcGUID, srcName,
-                                 srcFlags, dstGUID, dstName, dstFlags, ...)
-    if not dstName then return end
-    if subevent == "SWING_DAMAGE"
-       or subevent == "SPELL_DAMAGE"
-       or subevent == "SPELL_PERIODIC_DAMAGE"
-       or subevent == "RANGE_DAMAGE" then
-        damaged_names[dstName] = GetTime()
-    end
-end)
 
 function module:on_init(settings)
     db = settings
@@ -458,11 +449,9 @@ end
 SPU:register_config("Nameplates", function(panel)
     local n = function() return SPU.db.nameplates end
 
-    -- header/subtitle stay fixed on the panel, above the scroll
     local header = SPU:make_header(panel, "Nameplates", nil)
     local sub    = SPU:make_subtitle(panel, "Custom nameplates faithful to the default.", header)
 
-    -- everything below scrolls
     local content, scroll, top = SPU:make_scroll(panel, sub)
 
     local enable = SPU:make_checkbox(content, "StockPlusUINameplateEnable", "Enable custom nameplates", top, -8,
@@ -508,4 +497,3 @@ SPU:register_config("Nameplates", function(panel)
 
     content:SetHeight(420)
 end)
-
