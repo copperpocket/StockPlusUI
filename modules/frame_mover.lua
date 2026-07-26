@@ -56,11 +56,16 @@ StaticPopupDialogs["STOCKPLUSUI_RESET_FRAMES"] = {
 
 local function apply_position(entry)
     if InCombatLockdown() then return end
-    local pos = db.positions and db.positions[entry.key]
     local f = _G[entry.frame]
-    if f and pos then
+    if not f then return end
+    local pos = db.positions and db.positions[entry.key]
+    if pos then
         f:ClearAllPoints()
         f:SetPoint(pos.point or "TOPLEFT", UIParent, "TOPLEFT", pos.x, pos.y)
+    elseif entry._orig then
+        -- no saved position in this profile: restore Blizzard's default
+        f:ClearAllPoints()
+        f:SetPoint(entry._orig.p, UIParent, entry._orig.rp, entry._orig.x, entry._orig.y)
     end
 end
 

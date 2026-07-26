@@ -1,15 +1,13 @@
--- core.lua : addon table, shared event system, saved vars, slash command
+-- core.lua : addon table, shared event system, saved vars, profiles, slash cmd
 local addon_name = ...
 
 local SPU = {}
 _G["StockPlusUI"] = SPU
 
 SPU.name    = "StockPlusUI"
-SPU.modules = {}   -- registered feature modules
+SPU.modules = {}
 SPU.frame   = CreateFrame("Frame", "StockPlusUIEventFrame", UIParent)
 
--- Lightweight per-event listener registry so modules don't each create a frame.
--- listeners[event] = { fn1, fn2, ... }
 local listeners = {}
 
 function SPU:register_event(event, fn)
@@ -23,30 +21,95 @@ end
 SPU.frame:SetScript("OnEvent", function(_, event, ...)
     local fns = listeners[event]
     if fns then
-        for i = 1, #fns do
-            fns[i](event, ...)
-        end
+        for i = 1, #fns do fns[i](event, ...) end
     end
 end)
 
--- Modules call SPU:register_module({ name = ..., on_init = function(self, db) end })
 function SPU:register_module(module)
     table.insert(self.modules, module)
 end
 
--- Config page registry. Modules call SPU:register_config("Label", build_fn).
-SPU.config_pages = {}   -- { { name = ..., build = ... }, ... }
+SPU.config_pages = {}
 
 function SPU:register_config(name, build_fn)
     table.insert(self.config_pages, { name = name, build = build_fn })
+end
+
+-- ---- profiles --------------------------------------------------------------
+-- StockPlusUIDB = { profiles = { Name = {...}, ... }, active = "Name" }
+-- SPU.db points at the ACTIVE profile, so modules read SPU.db.<module> as before.
+
+local DEFAULT_PROFILE = "Main"
+
+local function ensure_structure()
+    StockPlusUIDB = StockPlusUIDB or {}
+
+    -- migrate old flat structure -> profiles.Main (preserves current config)
+    if not StockPlusUIDB.profiles then
+        local old = StockPlusUIDB
+        local looks_flat = old.action_bar_fader or old.chat_enhance or old.conditions
+        StockPlusUIDB = { profiles = {}, active = DEFAULT_PROFILE }
+        StockPlusUIDB.profiles[DEFAULT_PROFILE] = looks_flat and old or {}
+        StockPlusUIDB.profiles[DEFAULT_PROFILE].profiles = nil
+        StockPlusUIDB.profiles[DEFAULT_PROFILE].active   = nil
+    end
+
+    StockPlusUIDB.active = StockPlusUIDB.active or DEFAULT_PROFILE
+    StockPlusUIDB.profiles[StockPlusUIDB.active] =
+        StockPlusUIDB.profiles[StockPlusUIDB.active] or {}
+end
+
+function SPU:get_profile_names()
+    local names = {}
+    for name in pairs(StockPlusUIDB.profiles) do names[#names + 1] = name end
+    table.sort(names)
+    return names
+end
+
+function SPU:get_active_profile()
+    return StockPlusUIDB.active
+end
+
+-- Switching sets active + reloads to apply the profile cleanly.
+function SPU:set_active_profile(name)
+    if not StockPlusUIDB.profiles[name] then return end
+    StockPlusUIDB.active = name
+    ReloadUI()
+end
+
+function SPU:create_profile(name)
+    if not name or name == "" or StockPlusUIDB.profiles[name] then return false end
+    StockPlusUIDB.profiles[name] = {}
+    return true
+end
+
+function SPU:copy_profile(from, to)
+    if not StockPlusUIDB.profiles[from] then return false end
+    if not to or to == "" or StockPlusUIDB.profiles[to] then return false end
+    local function deep_copy(t)
+        local c = {}
+        for k, v in pairs(t) do
+            if type(v) == "table" then c[k] = deep_copy(v) else c[k] = v end
+        end
+        return c
+    end
+    StockPlusUIDB.profiles[to] = deep_copy(StockPlusUIDB.profiles[from])
+    return true
+end
+
+function SPU:delete_profile(name)
+    if name == DEFAULT_PROFILE then return false end       -- keep a baseline
+    if name == StockPlusUIDB.active then return false end   -- can't delete active
+    StockPlusUIDB.profiles[name] = nil
+    return true
 end
 
 -- Bootstrap once saved variables are available.
 SPU:register_event("ADDON_LOADED", function(_, loaded_name)
     if loaded_name ~= addon_name then return end
 
-    StockPlusUIDB = StockPlusUIDB or {}
-    SPU.db = StockPlusUIDB
+    ensure_structure()
+    SPU.db = StockPlusUIDB.profiles[StockPlusUIDB.active]
     SPU:apply_defaults(SPU.db)   -- defined in config.lua
 
     for i = 1, #SPU.modules do
@@ -56,8 +119,7 @@ SPU:register_event("ADDON_LOADED", function(_, loaded_name)
     end
 end)
 
--- Reusable taint-safe alpha fader. Returns a controller with :fade_to(alpha)
--- and :set(alpha). Uses SetAlpha only (never writes fields onto secure frames).
+-- Reusable taint-safe alpha fader.
 function SPU:create_fader(get_frames, fade_time)
     local driver = CreateFrame("Frame")
     driver:Hide()
@@ -92,10 +154,7 @@ function SPU:create_fader(get_frames, fade_time)
     return ctrl
 end
 
--- Shared "should the UI be shown" state used by all fader modules. Reads the
--- configurable conditions from db.conditions. Combat/target default ON (only
--- skipped if explicitly disabled); group defaults OFF. Plus HP/MP thresholds.
--- Hover is intentionally NOT here — each module tracks its own frame's hover.
+-- Shared "should the UI be shown" state used by all fader modules.
 function SPU:should_ui_show()
     local c = (self.db and self.db.conditions) or {}
 
@@ -119,8 +178,6 @@ function SPU:should_ui_show()
     return false
 end
 
--- Re-apply every module's fade state. Used when shared "general" settings
--- change so all elements re-evaluate immediately.
 function SPU:refresh_all()
     if self.apply_fade         then self:apply_fade() end
     if self.apply_player_frame then self:apply_player_frame() end
@@ -131,20 +188,17 @@ function SPU:refresh_all()
     if self.apply_chat_fade    then self:apply_chat_fade() end
 end
 
--- Re-evaluate all modules when group composition changes (for the group condition).
 SPU:register_event("PARTY_MEMBERS_CHANGED", function() SPU:refresh_all() end)
 SPU:register_event("RAID_ROSTER_UPDATE",    function() SPU:refresh_all() end)
 SPU:register_event("PLAYER_LOGIN", function()
     if SPU.build_config_pages then SPU:build_config_pages() end
 end)
 
--- Slash command: /spu or /stockplus opens the options panel.
 SLASH_STOCKPLUSUI1 = "/stockplus"
 SLASH_STOCKPLUSUI2 = "/stockplusui"
 SLASH_STOCKPLUSUI3 = "/sui"
 SLASH_STOCKPLUSUI4 = "/spui"
 SlashCmdList["STOCKPLUSUI"] = function()
-    -- InterfaceOptionsFrame_OpenToCategory has a known 3.3.5 quirk: call twice.
     InterfaceOptionsFrame_OpenToCategory(SPU.options_panel)
     InterfaceOptionsFrame_OpenToCategory(SPU.options_panel)
 end
