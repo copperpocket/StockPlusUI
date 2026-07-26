@@ -39,7 +39,8 @@ local defaults = {
     },
     minimap_fader = {
         enabled     = false,
-        faded_alpha = 0.0,   -- chrome fully hidden when idle
+        fade_map    = false,   -- also fade the map frame itself
+        faded_alpha = 0.0,
         shown_alpha = 1.0,
         fade_time   = 0.25,
     },
