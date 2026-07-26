@@ -78,6 +78,11 @@ local defaults = {
         hp_threshold = 100,
         mp_threshold = 100,
     },
+    frame_mover = {
+        unlocked       = false,
+        tooltip_custom = false,
+        positions      = {},
+    },
 }
 
 local function deep_merge(dst, src)
