@@ -1,77 +1,52 @@
--- modules/minimap_fader.lua : fade the minimap cluster by player state.
--- Engine-drawn blips (party/raid dots, POI/quest "!") ignore SetAlpha, so we
--- hard-hide the Minimap surface at the end of the fade-out to remove them,
--- and show it again when fading back in. Faded = fully hidden (alpha 0).
+-- modules/minimap_fader.lua : keep the minimap map always visible while its
+-- chrome (buttons, clock, zone text, etc.) fades on shared UI conditions.
 local SPU = _G["StockPlusUI"]
 
 local module = { name = "minimap_fader" }
 SPU:register_module(module)
 
-local FADED_ALPHA = 0   -- minimap fades fully out (engine blips can't be alpha'd)
-
 local db
 local mouse_over = false
+local fader
 local current
+
+-- Chrome = everything around the minimap except the map itself. These fade as
+-- a group on conditions; the Minimap frame stays fully visible.
+local chrome_frames = {
+    "MinimapZoomIn",
+    "MinimapZoomOut",
+    "TimeManagerClockButton",
+    "MiniMapTrackingFrame",          -- container (background)
+    "MiniMapTrackingButton",         -- the button
+    "MiniMapTrackingButtonBorder",   -- border ring
+    "MiniMapTrackingIcon",           -- the tracking icon itself
+    "MiniMapTrackingBackground",
+    "GameTimeFrame",
+    "MiniMapWorldMapButton",
+    "MinimapZoneTextButton",
+    "MinimapBorderTop",
+    "MinimapToggleButton",
+}
+
+local function get_chrome()
+    local out = {}
+    for i = 1, #chrome_frames do
+        local f = _G[chrome_frames[i]]
+        if f then out[#out + 1] = f end
+    end
+    return out
+end
 
 local function should_show()
     return SPU:should_ui_show() or mouse_over
 end
 
--- ---- fade driver with completion (hides Minimap surface when fully out) -----
-
-local driver = CreateFrame("Frame")
-driver:Hide()
-local from, to, elapsed, dur = 1, 1, 0, 0
-
-local function set_alpha(a)
-    if MinimapCluster then MinimapCluster:SetAlpha(a) end
-end
-
-driver:SetScript("OnUpdate", function(self, dt)
-    elapsed = elapsed + dt
-    local t = (dur > 0) and (elapsed / dur) or 1
-    if t >= 1 then
-        set_alpha(to)
-        self:Hide()
-        -- fade finished: if we faded OUT, hide the map surface to kill blips
-        if to <= 0.001 and not should_show() then
-            if Minimap then Minimap:Hide() end
-        end
-    else
-        set_alpha(from + (to - from) * t)
-    end
-end)
-
-local function start_fade(target)
-    from    = MinimapCluster and MinimapCluster:GetAlpha() or target
-    to      = target
-    elapsed = 0
-    dur     = db.fade_time or 0.25
-    if dur <= 0 or from == to then
-        set_alpha(target)
-        driver:Hide()
-        if target <= 0.001 and not should_show() then
-            if Minimap then Minimap:Hide() end
-        end
-    else
-        driver:Show()
-    end
-end
-
--- ---- apply -----------------------------------------------------------------
-
 local function apply()
     if not db or not db.enabled then return end
-    local show = should_show()
-    local target = show and db.shown_alpha or FADED_ALPHA
+    local target = should_show() and db.shown_alpha or db.faded_alpha
     if current == target then return end
     current = target
-
-    if show then
-        -- fading IN: reveal the map surface first so blips return, then fade up
-        if Minimap then Minimap:Show() end
-    end
-    start_fade(target)
+    fader:fade_to(target)
 end
 
 SPU.apply_minimap = apply
@@ -80,9 +55,7 @@ function SPU:refresh_minimap()
         current = nil
         apply()
     else
-        driver:Hide()
-        if Minimap then Minimap:Show() end
-        if MinimapCluster then MinimapCluster:SetAlpha(1.0) end
+        if fader then fader:set(1.0) end
         current = 1.0
     end
 end
@@ -91,6 +64,7 @@ end
 
 function module:on_init(settings)
     db = settings
+    fader = SPU:create_fader(get_chrome, db.fade_time)
 
     SPU:register_event("PLAYER_REGEN_DISABLED",  apply)
     SPU:register_event("PLAYER_REGEN_ENABLED",   apply)
@@ -103,6 +77,7 @@ function module:on_init(settings)
     SPU:register_event("UNIT_RUNIC_POWER",  function(_, u) if u == "player" then apply() end end)
     SPU:register_event("UNIT_DISPLAYPOWER", function(_, u) if u == "player" then apply() end end)
 
+    -- hover over the whole minimap area keeps chrome shown
     local poller, acc = CreateFrame("Frame"), 0
     poller:SetScript("OnUpdate", function(_, dt)
         acc = acc + dt
@@ -121,9 +96,13 @@ SPU:register_config("Minimap", function(panel)
     local m = function() return SPU.db.minimap_fader end
 
     local header = SPU:make_header(panel, "Minimap", nil)
-    local sub    = SPU:make_subtitle(panel, "Fade the minimap and all its elements based on player state.", header)
+    local sub    = SPU:make_subtitle(panel, "Keep the minimap visible while its buttons, clock, and zone text fade with UI state.", header)
 
-    SPU:make_checkbox(panel, "StockPlusUIMinimapFade", "Fade minimap", sub, -16,
+    local toggle = SPU:make_checkbox(panel, "StockPlusUIMinimapFade", "Fade minimap chrome (keep map visible)", sub, -16,
         function() return m().enabled end,
         function(v) m().enabled = v; if SPU.refresh_minimap then SPU:refresh_minimap() end end)
+
+    SPU:make_alpha_slider(panel, "StockPlusUIMinimapAlpha", "Faded chrome opacity", toggle, -24,
+        function() return m().faded_alpha end,
+        function(v) m().faded_alpha = v; if SPU.refresh_minimap then SPU:refresh_minimap() end end)
 end)
