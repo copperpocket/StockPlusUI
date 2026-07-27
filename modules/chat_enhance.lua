@@ -1,6 +1,6 @@
 -- modules/chat_enhance.lua : enhance the default chat frame (opacity, buttons,
--- text fade time, unified conditional fading). All deviations from native are
--- gated behind toggles; with toggles off, native behavior is fully restored.
+-- text fade time). Chat visibility is INDEPENDENT of the shared UI conditions;
+-- it fades on its own (hover / typing / native text fade), like default WoW.
 local SPU = _G["StockPlusUI"]
 
 local chat = { name = "chat_enhance" }
@@ -15,9 +15,6 @@ local shared_buttons = {
 }
 
 -- ---- buttons ---------------------------------------------------------------
--- Set alpha on the button FRAME only (cascades to Up/Down/Bottom children).
--- Setting both parent and children multiplies alpha, making the scroll buttons
--- fade far faster than the independent social/menu buttons.
 
 local function apply_buttons()
     for i = 1, NUM_CHAT_WINDOWS do
@@ -27,11 +24,10 @@ local function apply_buttons()
                 bf:Hide()
             else
                 bf:Show()
-                bf:SetAlpha(db.buttons_alpha)   -- cascades to Up/Down/Bottom children
+                bf:SetAlpha(db.buttons_alpha)
             end
         end
     end
-    -- Independent buttons that live outside the button frame.
     for i = 1, #shared_buttons do
         local b = _G[shared_buttons[i]]
         if b then
@@ -40,10 +36,6 @@ local function apply_buttons()
     end
 end
 
--- Move every chat window's edit box above its frame (or restore to bottom).
--- When on top, the edit box is mouse-DISABLED so clicks pass through to the
--- tabs underneath (open it with Enter/slash, like DragonUI/ElvUI). This runs
--- regardless of the fade setting.
 local function apply_editbox_position()
     for i = 1, NUM_CHAT_WINDOWS do
         local eb = _G["ChatFrame" .. i .. "EditBox"]
@@ -53,19 +45,16 @@ local function apply_editbox_position()
             if db.editbox_on_top then
                 eb:SetPoint("BOTTOMLEFT",  cf, "TOPLEFT",  -5, 22)
                 eb:SetPoint("BOTTOMRIGHT", cf, "TOPRIGHT",  5, 22)
-                eb:EnableMouse(false)   -- click-through: open via Enter, not click
+                eb:EnableMouse(false)
             else
                 eb:SetPoint("TOPLEFT",  cf, "BOTTOMLEFT",  -5, 0)
                 eb:SetPoint("TOPRIGHT", cf, "BOTTOMRIGHT",  5, 0)
-                eb:EnableMouse(true)    -- restore default click-to-open
+                eb:EnableMouse(true)
             end
         end
     end
 end
 
--- Zero the clamp insets so the chat frame can slide to the very screen edges.
--- Blizzard reserves left space (button column) and bottom space (edit box) via
--- negative insets; with our buttons hidden we want them to slide off-screen.
 local function apply_clamp_insets()
     for i = 1, NUM_CHAT_WINDOWS do
         local cf = _G["ChatFrame" .. i]
@@ -75,7 +64,7 @@ local function apply_clamp_insets()
     end
 end
 
--- ---- text fade (gated behind faster_text_fade) -----------------------------
+-- ---- text fade -------------------------------------------------------------
 
 local function apply_text_fade()
     for i = 1, NUM_CHAT_WINDOWS do
@@ -89,6 +78,15 @@ local function apply_text_fade()
                 cf:SetTimeVisible(native_time_visible[i] or 120)
             end
         end
+    end
+end
+
+-- Reveal faded chat text the way scrolling does (re-renders buffered lines).
+-- ScrollDown() re-shows the current lines even when already at the bottom.
+local function reveal_chat_text()
+    for i = 1, NUM_CHAT_WINDOWS do
+        local cf = _G["ChatFrame" .. i]
+        if cf and cf.ScrollDown then cf:ScrollDown() end
     end
 end
 
@@ -106,7 +104,7 @@ function SPU:refresh_chat()
     if SPU.refresh_chat_fade then SPU:refresh_chat_fade() end
 end
 
--- ---- state evaluation ------------------------------------------------------
+-- ---- state evaluation (INDEPENDENT of shared conditions) -------------------
 
 local mouse_over_chat
 
@@ -121,10 +119,7 @@ local function mouse_over_cluster()
     return false
 end
 
--- General "cluster should be visible" state. Note: editbox focus is handled
--- separately below, but typing should still reveal the whole cluster.
 local function should_show()
-    if SPU:should_ui_show() then return true end
     if mouse_over_chat then return true end
     local eb = _G["ChatFrame1EditBox"]
     if eb and eb:HasFocus() then return true end
@@ -136,7 +131,6 @@ end
 local tab_fader, current_tab_alpha
 local eb_fader,  current_eb_alpha
 
--- Tabs + resize handles (NOT the edit box; it has its own rule).
 local function get_fade_frames()
     local out = {}
     for i = 1, NUM_CHAT_WINDOWS do
@@ -190,15 +184,12 @@ local function apply_fade_state()
 
     local show = should_show()
 
-    -- tabs + resize
     local tab_t = show and db.tabs_shown_alpha or db.tabs_faded_alpha
     if current_tab_alpha ~= tab_t and tab_fader then
         current_tab_alpha = tab_t
         tab_fader:fade_to(tab_t)
     end
 
-    -- edit boxes: visible only while actually focused (typing). Otherwise
-    -- alpha 0. Mouse enable/disable is handled in apply_editbox_position.
     for i = 1, NUM_CHAT_WINDOWS do
         local eb = _G["ChatFrame" .. i .. "EditBox"]
         if eb then
@@ -207,7 +198,6 @@ local function apply_fade_state()
     end
     current_eb_alpha = nil
 
-    -- background
     local bg_t = db.bg_alpha * (show and 1.0 or db.tabs_faded_alpha)
     if bg_target ~= bg_t then
         bg_target = bg_t
@@ -266,23 +256,14 @@ function chat:on_init(settings)
         if tab and current_tab_alpha then tab:SetAlpha(current_tab_alpha) end
     end)
 
-    -- Blizzard resets clamp insets when a chat frame is moved/docked; reassert.
     hooksecurefunc("FCF_SavePositionAndDimensions", function() if db then apply_clamp_insets() end end)
 
     SPU:register_event("PLAYER_ENTERING_WORLD", apply_chat)
     apply_chat()
 
+    -- Chat fade responds ONLY to its own activity (hover/typing), not shared
+    -- conditions. Focus also optionally reveals faded text while typing.
     local function on_state() apply_fade_state() end
-    SPU:register_event("PLAYER_REGEN_DISABLED",  on_state)
-    SPU:register_event("PLAYER_REGEN_ENABLED",   on_state)
-    SPU:register_event("PLAYER_TARGET_CHANGED",  on_state)
-    SPU:register_event("PLAYER_ENTERING_WORLD",  on_state)
-    SPU:register_event("UNIT_HEALTH",       function(_, u) if u == "player" then on_state() end end)
-    SPU:register_event("UNIT_MANA",         function(_, u) if u == "player" then on_state() end end)
-    SPU:register_event("UNIT_RAGE",         function(_, u) if u == "player" then on_state() end end)
-    SPU:register_event("UNIT_ENERGY",       function(_, u) if u == "player" then on_state() end end)
-    SPU:register_event("UNIT_RUNIC_POWER",  function(_, u) if u == "player" then on_state() end end)
-    SPU:register_event("UNIT_DISPLAYPOWER", function(_, u) if u == "player" then on_state() end end)
     SPU:register_event("UPDATE_CHAT_WINDOWS", apply_chat)
     SPU:register_event("UPDATE_CHAT_COLOR",   apply_chat)
 
@@ -291,13 +272,18 @@ function chat:on_init(settings)
     for i = 1, NUM_CHAT_WINDOWS do
         local eb = _G["ChatFrame" .. i .. "EditBox"]
         if eb then
-            eb:HookScript("OnEditFocusGained", on_state)
-            eb:HookScript("OnEditFocusLost",   on_state)
-            eb:HookScript("OnShow", function()
-                apply_editbox_position()   -- re-assert position each time it appears
+            eb:HookScript("OnEditFocusGained", function()
+                if db and db.show_text_on_type then reveal_chat_text() end
                 on_state()
             end)
-            eb:HookScript("OnHide",            on_state)
+            eb:HookScript("OnEditFocusLost", function()
+                on_state()
+            end)
+            eb:HookScript("OnShow", function()
+                apply_editbox_position()
+                on_state()
+            end)
+            eb:HookScript("OnHide", on_state)
         end
     end
 
@@ -316,16 +302,16 @@ function chat:on_init(settings)
     SPU:refresh_chat_fade()
 end
 
--- ---- config page (ordered to match other sections) -------------------------
+-- ---- config page -----------------------------------------------------------
 SPU:register_config("Chat", function(panel)
     local c = function() return SPU.db.chat_enhance end
 
     local header = SPU:make_header(panel, "Chat", nil)
-    local sub    = SPU:make_subtitle(panel, "Enhance chat opacity and fading. With toggles off, chat behaves like default WoW.", header)
+    local sub    = SPU:make_subtitle(panel, "Chat opacity and fading, independent of the shared conditions.", header)
 
     local content, scroll, top = SPU:make_scroll(panel, sub)
 
-    local fade_tabs = SPU:make_checkbox(content, "StockPlusUIChatFadeTabs", "Fade chat frame", top, -8,
+    local fade_tabs = SPU:make_checkbox(content, "StockPlusUIChatFadeTabs", "Fade tabs and background", top, -8,
         function() return c().fade_tabs end,
         function(v) c().fade_tabs = v; if SPU.refresh_chat_fade then SPU:refresh_chat_fade() end end)
 
@@ -354,9 +340,13 @@ SPU:register_config("Chat", function(panel)
         function() return c().text_visible_time end,
         function(v) c().text_visible_time = v; if SPU.refresh_chat then SPU:refresh_chat() end end)
 
-    SPU:make_checkbox(content, "StockPlusUIChatEditTop", "Edit box on top", vis, -14,
+    local edittop = SPU:make_checkbox(content, "StockPlusUIChatEditTop", "Edit box on top", vis, -14,
         function() return c().editbox_on_top end,
         function(v) c().editbox_on_top = v; if SPU.refresh_chat then SPU:refresh_chat() end end)
 
-    content:SetHeight(360)
+    SPU:make_checkbox(content, "StockPlusUIChatShowOnType", "Show chat text while typing", edittop, -8,
+        function() return c().show_text_on_type end,
+        function(v) c().show_text_on_type = v; if SPU.refresh_chat then SPU:refresh_chat() end end)
+
+    content:SetHeight(380)
 end)

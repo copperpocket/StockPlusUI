@@ -37,6 +37,7 @@ local defaults = {
         tabs_shown_alpha  = 1.00,
         fade_time         = 0.25,
         editbox_on_top    = false,
+        show_text_on_type = false,
     },
     minimap_fader = {
         enabled     = false,
