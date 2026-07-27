@@ -20,3 +20,4 @@ modules\objective_tracker_fader.lua
 modules\nameplates.lua
 modules\frame_mover.lua
 modules\profiles.lua
+modules\macros.lua
