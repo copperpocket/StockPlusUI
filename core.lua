@@ -170,9 +170,19 @@ function SPU:should_ui_show()
         return true
     end
 
+    -- Power: rage/runic power rest at 0 (show when ABOVE 0); mana/energy/focus
+    -- rest at full (show when BELOW the threshold %). This keeps the "show on
+    -- resource activity" behavior correct per class.
+    local pt = UnitPowerType("player")
     local mp_max = UnitPowerMax("player")
-    if mp_max > 0 and (UnitPower("player") / mp_max * 100) < mp_t then
-        return true
+    if mp_max > 0 then
+        if pt == 1 or pt == 6 then
+            -- rage (1) or runic power (6): resting = 0, show if any is present
+            if UnitPower("player") > 0 then return true end
+        else
+            -- mana (0) / energy (3) / focus (2): resting = full
+            if (UnitPower("player") / mp_max * 100) < mp_t then return true end
+        end
     end
 
     return false
