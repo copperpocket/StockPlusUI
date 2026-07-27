@@ -14,6 +14,7 @@ local defaults = {
             bottom_right = { enabled = false },
             right_1      = { enabled = false },
             right_2      = { enabled = false },
+            stance       = { enabled = false },
         },
     },
     gryphon_toggle = {

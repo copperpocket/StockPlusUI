@@ -17,6 +17,7 @@ SPU:register_config("Action Bars", function(panel)
         { key = "bottom_right", label = "Fade bottom-right bar" },
         { key = "right_1",      label = "Fade right bar 1" },
         { key = "right_2",      label = "Fade right bar 2" },
+        { key = "stance",       label = "Fade stance bar" },
     }
 
     local anchor = sub
@@ -48,11 +49,12 @@ end)
 -- Per-bar definitions. Each key gets its own enabled setting, config checkbox,
 -- and fade driver, so any bar can fade while others stay put.
 local bar_defs = {
-    { key = "main",         label = "Fade main bar",         frames = { "MainMenuBarArtFrame", "BonusActionBarFrame", "MainMenuExpBar", "ReputationWatchBar, ExhaustionTick" } },
+    { key = "main",         label = "Fade main bar",         frames = { "MainMenuBarArtFrame", "BonusActionBarFrame", "MainMenuExpBar", "ReputationWatchBar", "ExhaustionTick" } },
     { key = "bottom_left",  label = "Fade bottom-left bar",  frames = { "MultiBarBottomLeft" } },
     { key = "bottom_right", label = "Fade bottom-right bar", frames = { "MultiBarBottomRight" } },
     { key = "right_1",      label = "Fade right bar 1",      frames = { "MultiBarRight" } },
     { key = "right_2",      label = "Fade right bar 2",      frames = { "MultiBarLeft" } },
+    { key = "stance",       label = "Fade stance bar",       frames = { "ShapeshiftBarFrame" } },
 }
 
 local db
