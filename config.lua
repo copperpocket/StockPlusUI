@@ -87,6 +87,10 @@ local defaults = {
         tooltip_custom = false,
         positions      = {},
     },
+    bag_sort = {
+        reverse_bags  = false,   -- false = bag 0 first; true = bag 4 first
+        pack_to_back  = true,    -- true = sorted items pack to the END (your pref)
+    },
 }
 
 local function deep_merge(dst, src)
