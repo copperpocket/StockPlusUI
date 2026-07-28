@@ -258,7 +258,10 @@ function chat:on_init(settings)
 
     hooksecurefunc("FCF_SavePositionAndDimensions", function() if db then apply_clamp_insets() end end)
 
-    SPU:register_event("PLAYER_ENTERING_WORLD", apply_chat)
+    SPU:register_event("PLAYER_ENTERING_WORLD", function()
+        apply_chat()
+        SPU:refresh_chat_fade()   -- re-assert background alpha after load settles
+    end)
     apply_chat()
 
     -- Chat fade responds ONLY to its own activity (hover/typing), not shared
