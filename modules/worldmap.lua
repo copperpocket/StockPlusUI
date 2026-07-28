@@ -1,5 +1,4 @@
--- modules/worldmap.lua : scale, fade, and move the world map.
---   Phase 1: scale slider.  Phase 3: opacity + hover fade.  Phase 2: drag move.
+-- modules/worldmap.lua : scale, fade, move the world map, and show coordinates.
 local SPU = _G["StockPlusUI"]
 
 local module = { name = "worldmap" }
@@ -9,7 +8,7 @@ local db
 local map_fader
 local mouse_over = false
 local current_alpha
-local drag_strip
+local coords_text
 
 local function is_windowed()
     return WORLDMAP_SETTINGS and WORLDMAP_SETTINGS.size == WORLDMAP_WINDOWED_SIZE
@@ -43,7 +42,6 @@ local function apply_position()
             WorldMapFrame:SetPoint(pos.point, UIParent, pos.point, pos.x, pos.y)
         end
     end
-    -- fullscreen: do NOT touch position; Blizzard anchors it centered/full
 end
 
 -- ---- opacity fade ----------------------------------------------------------
@@ -55,14 +53,13 @@ end
 local function apply_map_fade()
     if not db then return end
     if not WorldMapFrame or not WorldMapFrame:IsShown() then return end
-
     local target = mouse_over and 1.0 or (db.map_alpha or 1.0)
     if current_alpha == target then return end
     current_alpha = target
     if map_fader then map_fader:fade_to(target) end
 end
 
--- ---- drag strip (Phase 2) --------------------------------------------------
+-- ---- drag (Blizzard's title button) ----------------------------------------
 
 local function setup_drag()
     local title = _G["WorldMapTitleButton"]
@@ -80,6 +77,73 @@ local function setup_drag()
     end)
 end
 
+-- ---- coordinates (cursor + player) -----------------------------------------
+
+local function setup_coords()
+    if not WorldMapFrame then return end
+
+    local text = WorldMapFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    text:SetJustifyH("LEFT")
+    text:SetTextColor(1, 0.82, 0)
+    coords_text = text
+
+    -- (the OnUpdate block stays exactly as-is)
+    local acc = 0
+    WorldMapFrame:HookScript("OnUpdate", function(_, dt)
+        acc = acc + dt
+        if acc < 0.05 then return end
+        acc = 0
+
+        local detail = WorldMapDetailFrame
+        if not detail then text:SetText("") return end
+
+        -- player coords
+        local pstr = ""
+        local px, py = GetPlayerMapPosition("player")
+        if px and py and (px ~= 0 or py ~= 0) then
+            pstr = string.format("Player: %.1f, %.1f", px * 100, py * 100)
+        end
+
+        -- cursor coords over the map detail area
+        local cstr = ""
+        local mx, my = GetCursorPosition()
+        local scale = detail:GetEffectiveScale()
+        if scale and scale > 0 then
+            mx = mx / scale
+            my = my / scale
+            local left, top = detail:GetLeft(), detail:GetTop()
+            local w, h = detail:GetWidth(), detail:GetHeight()
+            if left and top and w and h and w > 0 and h > 0 then
+                local cx = (mx - left) / w
+                local cy = (top - my) / h
+                if cx >= 0 and cx <= 1 and cy >= 0 and cy <= 1 then
+                    cstr = string.format("Cursor: %.1f, %.1f", cx * 100, cy * 100)
+                end
+            end
+        end
+
+        if pstr ~= "" and cstr ~= "" then
+            text:SetText(pstr .. "  |  " .. cstr)
+        else
+            text:SetText(pstr .. cstr)
+        end
+    end)
+end
+
+local function position_coords()
+    if not coords_text then return end
+    coords_text:ClearAllPoints()
+    if is_windowed() then
+        -- windowed: on the bottom border (your tuned values)
+        coords_text:SetPoint("BOTTOMLEFT", WorldMapFrame, "BOTTOMLEFT", 25, -2)
+    else
+        -- fullscreen: bottom-left of the map detail area, matching the
+        -- "Show Quest Objectives" text height on the right
+        coords_text:SetPoint("BOTTOMLEFT", WorldMapDetailFrame or WorldMapFrame, "BOTTOMLEFT", 10, -20)
+    end
+end
+
+
 -- ---- init ------------------------------------------------------------------
 
 function module:on_init(settings)
@@ -88,43 +152,45 @@ function module:on_init(settings)
 
     if WorldMapFrame then
         setup_drag()
+        setup_coords()
+        position_coords()
 
         WorldMapFrame:HookScript("OnShow", function()
             apply_scale()
             apply_position()
+            position_coords()
             current_alpha = nil
             mouse_over = false
             WorldMapFrame:SetAlpha(db.map_alpha or 1.0)
             apply_map_fade()
         end)
 
-        -- re-apply (or reset) whenever the map view/size changes
         if WorldMapFrame_SetView then
             hooksecurefunc("WorldMapFrame_SetView", function()
                 apply_scale()
                 apply_position()
+                position_coords()
             end)
         end
-        -- also handle the windowed/fullscreen toggle if it uses this
         if WorldMap_ToggleSizeUp then
             hooksecurefunc("WorldMap_ToggleSizeUp", function()
                 apply_scale()
                 apply_position()
+                position_coords()
             end)
         end
         if WorldMap_ToggleSizeDown then
             hooksecurefunc("WorldMap_ToggleSizeDown", function()
                 apply_scale()
                 apply_position()
+                position_coords()
             end)
         end
-
     end
 
     SPU:register_event("PLAYER_ENTERING_WORLD", apply_scale)
     apply_scale()
 
-    -- hover poll (only while the map is shown)
     local poller, acc = CreateFrame("Frame"), 0
     poller:SetScript("OnUpdate", function(_, dt)
         acc = acc + dt
@@ -145,7 +211,7 @@ SPU:register_config("World Map", function(panel)
     local m = function() return SPU.db.worldmap end
 
     local header = SPU:make_header(panel, "World Map", nil)
-    local sub    = SPU:make_subtitle(panel, "Scale, fade, and move the world map. Drag the top edge to reposition.", header)
+    local sub    = SPU:make_subtitle(panel, "Scale, fade, and move the world map. Drag the title bar to reposition.", header)
 
     local scale = SPU:make_slider(panel, "StockPlusUIWorldMapScale", "Map scale", sub, -16,
         100, 250, 10, "Map scale: %d%%",
