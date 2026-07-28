@@ -207,7 +207,7 @@ runner:SetScript("OnUpdate", function()
     end
 
     if phase == "sort" then
-        if not do_sort_tick() then stop() end
+        if not do_sort_tick() then stop("Bags sorted.") end
     end
 end)
 
