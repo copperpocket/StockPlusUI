@@ -91,6 +91,10 @@ local defaults = {
         reverse_bags  = false,   -- false = bag 0 first; true = bag 4 first
         pack_to_back  = true,    -- true = sorted items pack to the END (your pref)
     },
+    worldmap = {
+        scale     = 1.0,
+        map_alpha = 0.7,   -- opacity when open but not hovered
+    },
 }
 
 local function deep_merge(dst, src)

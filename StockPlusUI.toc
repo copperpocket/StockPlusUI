@@ -22,3 +22,4 @@ modules\frame_mover.lua
 modules\profiles.lua
 modules\macros.lua
 modules\bag_sort.lua
+modules\worldmap.lua
