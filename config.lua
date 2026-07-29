@@ -38,6 +38,7 @@ local defaults = {
         fade_time         = 0.25,
         editbox_on_top    = false,
         show_text_on_type = false,
+        class_colors = false,
     },
     minimap_fader = {
         enabled     = false,

@@ -1,6 +1,6 @@
 -- modules/chat_enhance.lua : enhance the default chat frame (opacity, buttons,
--- text fade time). Chat visibility is INDEPENDENT of the shared UI conditions;
--- it fades on its own (hover / typing / native text fade), like default WoW.
+-- text fade time, class-colored names). Chat visibility is INDEPENDENT of the
+-- shared UI conditions; it fades on its own (hover / typing / native fade).
 local SPU = _G["StockPlusUI"]
 
 local chat = { name = "chat_enhance" }
@@ -81,8 +81,6 @@ local function apply_text_fade()
     end
 end
 
--- Reveal faded chat text the way scrolling does (re-renders buffered lines).
--- ScrollDown() re-shows the current lines even when already at the bottom.
 local function reveal_chat_text()
     for i = 1, NUM_CHAT_WINDOWS do
         local cf = _G["ChatFrame" .. i]
@@ -102,6 +100,42 @@ SPU.apply_chat = apply_chat
 function SPU:refresh_chat()
     apply_chat()
     if SPU.refresh_chat_fade then SPU:refresh_chat_fade() end
+end
+
+-- ---- class colored names ---------------------------------------------------
+
+local orig_GetColoredName
+
+local function get_class_color_from_guid(guid)
+    if not guid or guid == "" then return nil end
+    local _, class = GetPlayerInfoByGUID(guid)
+    if class and RAID_CLASS_COLORS[class] then
+        return RAID_CLASS_COLORS[class]
+    end
+    return nil
+end
+
+-- Wrap Blizzard's GetColoredName (called per chat line with the sender GUID at
+-- arg12) so the DISPLAY name is class-colored. The |Hplayer|h link is untouched.
+local function setup_class_colors()
+    if orig_GetColoredName then return end
+    orig_GetColoredName = _G.GetColoredName
+
+    _G.GetColoredName = function(event, arg1, arg2, arg3, arg4, arg5, arg6,
+                                 arg7, arg8, arg9, arg10, arg11, arg12, ...)
+        local name = orig_GetColoredName(event, arg1, arg2, arg3, arg4, arg5,
+            arg6, arg7, arg8, arg9, arg10, arg11, arg12, ...)
+
+        if not (db and db.class_colors) then return name end
+        if not name or name == "" then return name end
+
+        local color = get_class_color_from_guid(arg12)
+        if color then
+            return string.format("|cff%02x%02x%02x%s|r",
+                color.r * 255, color.g * 255, color.b * 255, name)
+        end
+        return name
+    end
 end
 
 -- ---- state evaluation (INDEPENDENT of shared conditions) -------------------
@@ -242,6 +276,8 @@ function chat:on_init(settings)
         end
     end
 
+    setup_class_colors()
+
     tab_fader = SPU:create_fader(get_fade_frames, db.fade_time)
     eb_fader  = SPU:create_fader(get_editbox,     db.fade_time)
 
@@ -260,12 +296,10 @@ function chat:on_init(settings)
 
     SPU:register_event("PLAYER_ENTERING_WORLD", function()
         apply_chat()
-        SPU:refresh_chat_fade()   -- re-assert background alpha after load settles
+        SPU:refresh_chat_fade()
     end)
     apply_chat()
 
-    -- Chat fade responds ONLY to its own activity (hover/typing), not shared
-    -- conditions. Focus also optionally reveals faded text while typing.
     local function on_state() apply_fade_state() end
     SPU:register_event("UPDATE_CHAT_WINDOWS", apply_chat)
     SPU:register_event("UPDATE_CHAT_COLOR",   apply_chat)
@@ -310,7 +344,7 @@ SPU:register_config("Chat", function(panel)
     local c = function() return SPU.db.chat_enhance end
 
     local header = SPU:make_header(panel, "Chat", nil)
-    local sub    = SPU:make_subtitle(panel, "Chat opacity and fading, independent of the shared conditions.", header)
+    local sub    = SPU:make_subtitle(panel, "Chat opacity, fading, and class colors, independent of the shared conditions.", header)
 
     local content, scroll, top = SPU:make_scroll(panel, sub)
 
@@ -347,9 +381,13 @@ SPU:register_config("Chat", function(panel)
         function() return c().editbox_on_top end,
         function(v) c().editbox_on_top = v; if SPU.refresh_chat then SPU:refresh_chat() end end)
 
-    SPU:make_checkbox(content, "StockPlusUIChatShowOnType", "Show chat text while typing", edittop, -8,
+    local showtype = SPU:make_checkbox(content, "StockPlusUIChatShowOnType", "Show chat text while typing", edittop, -8,
         function() return c().show_text_on_type end,
         function(v) c().show_text_on_type = v; if SPU.refresh_chat then SPU:refresh_chat() end end)
 
-    content:SetHeight(380)
+    SPU:make_checkbox(content, "StockPlusUIChatClassColors", "Class-colored names", showtype, -8,
+        function() return c().class_colors end,
+        function(v) c().class_colors = v end)
+
+    content:SetHeight(400)
 end)
